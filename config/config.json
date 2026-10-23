@@ -1,0 +1,38 @@
+{
+  "timezone": "Asia/Ho_Chi_Minh",
+  "window_days": 7,
+  "dashboard_url": "",
+  "markets": {
+    "ML": {"giao_days": 8, "chot_days": 4,
+           "kpi": {"chot": {"survival": 0.85, "monthly": 0.85},
+                   "giao": {"survival": 0.85, "monthly": 0.85},
+                   "gtc_clean": {"survival": 0.72, "monthly": 0.72}}},
+    "PH": {"giao_days": 12, "chot_days": 4,
+           "kpi": {"chot": {"survival": 0.80, "monthly": 0.80},
+                   "giao": {"survival": 0.87, "monthly": 0.87},
+                   "gtc_clean": {"survival": 0.70, "monthly": 0.70}}},
+    "CAM": {"giao_days": 8, "chot_days": 4, "kpi": {}},
+    "TH": {"giao_days": 8, "chot_days": 4,
+           "kpi": {"chot": {"survival": 0.87, "monthly": 0.90},
+                   "giao": {"survival": 0.91, "monthly": 0.94},
+                   "gtc_clean": {"survival": 0.79, "monthly": 0.85}}},
+    "VN": {"giao_days": 10, "chot_days": 4,
+           "kpi": {"chot": {"survival": 0.86, "monthly": 0.86},
+                   "giao": {"survival": 0.91, "monthly": 0.91},
+                   "gtc_clean": {"survival": 0.78, "monthly": 0.78}}},
+    "ID": {"giao_days": 12, "chot_days": 4,
+           "kpi": {"chot": {"survival": 0.80, "monthly": 0.80},
+                   "giao": {"survival": 0.90, "monthly": 0.90},
+                   "gtc_clean": {"survival": 0.72, "monthly": 0.72}}}
+  },
+  "send_when_ok": false,
+  "recipients": [
+    {"chat_id": "oc_513fd0e6953e2440e4cdee34ff3a6829", "name": "[HVH] Cập nhật bản tin Sinh tồn",
+     "survival": true, "monthly": false, "markets": []},
+    {"chat_id": "oc_3d4fb5f646a7a9d85b4f3e37813c6eab", "name": "[HVH] Cập nhật bản tin KPIs",
+     "survival": false, "monthly": true, "markets": []}
+  ],
+  "schedules": [
+    {"id": "s-weekly", "name": "Chủ nhật hàng tuần 08:00", "day_of_week": "sun", "hour": 8, "minute": 0, "enabled": true}
+  ]
+}

@@ -1,0 +1,674 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex, nofollow">
+<title>Nhịp đập kinh doanh</title>
+<style>
+:root {
+  color-scheme: light;
+  --page: #f9f9f7; --surface: #fcfcfb; --raised: #ffffff;
+  --ink: #0b0b0b; --ink-2: #52514e; --muted: #898781;
+  --grid: #e1e0d9; --axis: #c3c2b7; --border: rgba(11,11,11,0.10);
+  --accent: #2a78d6; --good-text: #006300; --critical: #d03b3b;
+  --good-bg: rgba(12,163,12,0.08); --critical-bg: rgba(208,59,59,0.08);
+  --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#eda100; --s5:#e87ba4; --s6:#008300; --s7:#6250d6; --s8:#e34948;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --page: #0d0d0d; --surface: #1a1a19; --raised: #222221;
+    --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
+    --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
+    --accent: #3987e5; --good-text: #0ca30c;
+    --good-bg: rgba(12,163,12,0.14); --critical-bg: rgba(208,59,59,0.16);
+    --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181; --s6:#008300; --s7:#9085e9; --s8:#e66767;
+  }
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --page: #0d0d0d; --surface: #1a1a19; --raised: #222221;
+  --ink: #f0efec; --ink-2: #c3c2b7; --muted: #898781;
+  --grid: #2c2c2a; --axis: #383835; --border: rgba(255,255,255,0.10);
+  --accent: #3987e5; --good-text: #0ca30c;
+  --good-bg: rgba(12,163,12,0.14); --critical-bg: rgba(208,59,59,0.16);
+  --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#c98500; --s5:#d55181; --s6:#008300; --s7:#9085e9; --s8:#e66767;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--page); color: var(--ink); font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+header { position: sticky; top: 0; z-index: 5; background: var(--surface); border-bottom: 1px solid var(--border); }
+.bar { max-width: 1280px; margin: 0 auto; padding: 10px 16px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.brand { font-weight: 700; font-size: 16px; margin-right: auto; }
+.brand small { display: block; font-weight: 400; color: var(--muted); font-size: 12px; }
+nav { display: flex; gap: 4px; }
+nav button, .seg button { border: 1px solid var(--border); background: transparent; color: var(--ink-2); padding: 6px 12px; border-radius: 8px; cursor: pointer; font: inherit; }
+nav button.on, .seg button.on { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+.seg { display: inline-flex; }
+.seg button { border-radius: 0; }
+.seg button:first-child { border-radius: 8px 0 0 8px; }
+.seg button:last-child { border-radius: 0 8px 8px 0; }
+input, select { font: inherit; color: var(--ink); background: var(--raised); border: 1px solid var(--border); border-radius: 8px; padding: 6px 8px; }
+main { max-width: 1280px; margin: 0 auto; padding: 16px; }
+.card { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 16px; margin-bottom: 16px; }
+h2 { font-size: 15px; margin: 0 0 12px; }
+.muted { color: var(--muted); }
+.sub { color: var(--ink-2); }
+.headline { font-size: 18px; font-weight: 600; margin: 0; }
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; }
+.mkt { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 14px; }
+.mkt-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 8px; gap: 8px; }
+.mkt-head b { font-size: 18px; }
+.kpi-row { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; padding: 8px 0; border-top: 1px solid var(--grid); }
+.kpi-row .lbl { color: var(--ink-2); font-size: 13px; }
+.kpi-row .val { font-size: 20px; font-weight: 600; }
+.kpi-row .meta { color: var(--muted); font-size: 12px; grid-column: 1 / -1; }
+.badge { display: inline-flex; gap: 4px; align-items: center; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; white-space: nowrap; }
+.badge.ok { color: var(--good-text); background: var(--good-bg); }
+.badge.bad { color: var(--critical); background: var(--critical-bg); }
+.badge.na { color: var(--muted); background: var(--grid); }
+.tbl-wrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-variant-numeric: tabular-nums; }
+th, td { padding: 6px 10px; border-bottom: 1px solid var(--grid); text-align: right; white-space: nowrap; }
+th:first-child, td:first-child { text-align: left; }
+th { color: var(--ink-2); font-weight: 600; font-size: 12px; }
+td.bad { color: var(--critical); font-weight: 600; }
+.alert { border: 1px solid var(--border); border-left: 3px solid var(--critical); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; background: var(--raised); }
+.alert summary { cursor: pointer; list-style: none; }
+.alert summary::-webkit-details-marker { display: none; }
+.alert .lv b { display: block; margin-top: 6px; }
+.alert ul { margin: 2px 0 0 18px; padding: 0; }
+.chart-tools { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 8px; }
+.legend { display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 12px; color: var(--ink-2); }
+.legend label { display: inline-flex; gap: 6px; align-items: center; cursor: pointer; }
+.sw { width: 10px; height: 10px; border-radius: 2px; display: inline-block; }
+#chart { position: relative; }
+#chart svg { width: 100%; height: 300px; display: block; }
+.tip { position: absolute; pointer-events: none; background: var(--raised); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px; font-size: 12px; box-shadow: 0 4px 16px rgba(0,0,0,.12); display: none; min-width: 150px; }
+.tip .r { display: flex; justify-content: space-between; gap: 12px; }
+.form-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 10px; }
+.field { display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--ink-2); }
+.field input, .field select { width: 100%; }
+.item { border: 1px solid var(--border); border-radius: 10px; padding: 12px; margin-bottom: 10px; background: var(--raised); }
+.item-head { display: flex; gap: 8px; align-items: center; justify-content: space-between; margin-bottom: 10px; flex-wrap: wrap; }
+.checks { display: flex; flex-wrap: wrap; gap: 6px 12px; font-size: 13px; color: var(--ink); }
+.btn { border: 1px solid var(--border); background: var(--raised); color: var(--ink); padding: 6px 12px; border-radius: 8px; cursor: pointer; font: inherit; text-decoration: none; display: inline-block; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+.btn.danger { color: var(--critical); }
+.btn:disabled { opacity: .5; cursor: wait; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.kpi-tbl input { width: 70px; text-align: right; }
+.toast { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%); background: var(--ink); color: var(--surface); padding: 10px 16px; border-radius: 8px; display: none; z-index: 20; max-width: calc(100% - 32px); }
+dialog { border: 1px solid var(--border); border-radius: 12px; background: var(--surface); color: var(--ink); max-width: 760px; width: calc(100% - 32px); padding: 0; }
+dialog::backdrop { background: rgba(0,0,0,.4); }
+.lark-head { padding: 12px 16px; color: #fff; font-weight: 600; border-radius: 12px 12px 0 0; }
+.lark-head.red { background: #d03b3b; } .lark-head.green { background: #0c8a0c; } .lark-head.blue { background: #2a78d6; }
+.lark-body { padding: 12px 16px; max-height: 65vh; overflow: auto; }
+.lark-body hr { border: 0; border-top: 1px solid var(--grid); }
+.lark-body .note { color: var(--muted); font-size: 12px; }
+.empty { padding: 24px; text-align: center; color: var(--muted); }
+.gate { max-width: 380px; margin: 12vh auto; }
+.gate input { width: 100%; margin: 8px 0 12px; }
+.rcp-wrap { display: grid; grid-template-columns: minmax(220px, 320px) 1fr; gap: 16px; align-items: start; }
+.rcp { display: block; width: 100%; text-align: left; font: inherit; color: var(--ink); padding: 10px 12px; margin-bottom: 6px; border: 1px solid var(--border); border-radius: 8px; background: var(--raised); cursor: pointer; }
+.rcp:hover { border-color: var(--axis); }
+.rcp.on { border-color: var(--accent); box-shadow: inset 3px 0 0 var(--accent); }
+.rcp small { display: block; color: var(--muted); font-size: 12px; margin-top: 2px; }
+.rcp-detail { border: 1px solid var(--border); border-radius: 10px; padding: 16px; background: var(--raised); min-height: 180px; }
+.rcp-detail h3 { margin: 0 0 4px; font-size: 16px; }
+.rcp-detail .sec { margin-top: 16px; }
+.rcp-detail .sec > b { display: block; font-size: 13px; margin-bottom: 6px; }
+.toggle { display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; margin: 0 8px 8px 0; }
+.toggle:has(input:checked) { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.pick { display: block; width: 100%; text-align: left; font: inherit; color: var(--ink); padding: 8px 10px; border: 0; border-bottom: 1px solid var(--grid); background: transparent; cursor: pointer; }
+.pick:hover { background: var(--grid); }
+@media (max-width: 720px) { .rcp-wrap { grid-template-columns: 1fr; } }
+.hidden { display: none !important; }
+@media (max-width: 640px) { .brand { width: 100%; } }
+</style>
+</head>
+<body>
+<header>
+  <div class="bar">
+    <div class="brand">📢 Nhịp đập kinh doanh<small>Cảnh báo tỷ lệ chốt · tỷ lệ giao — P.DVKH</small></div>
+    <nav class="hidden" id="nav">
+      <button data-tab="dash" class="on">Dashboard</button>
+      <button data-tab="cfg">Cấu hình</button>
+      <button data-tab="hist">Lịch sử gửi</button>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <!-- MẬT KHẨU -->
+  <section id="gate" class="card gate hidden">
+    <h2>🔒 Nhập mật khẩu dashboard</h2>
+    <form id="gateForm">
+      <input type="password" id="gatePwd" autocomplete="current-password" placeholder="Mật khẩu" required>
+      <button class="btn primary" type="submit">Mở dashboard</button>
+    </form>
+    <p class="muted" id="gateMsg" style="margin:8px 0 0;font-size:12px">Dữ liệu được mã hóa; mật khẩu do quản trị cung cấp.</p>
+  </section>
+
+  <!-- DASHBOARD -->
+  <section id="tab-dash" class="hidden">
+    <div class="card row" style="justify-content:space-between">
+      <div class="row">
+        <label class="field" style="flex-direction:row;align-items:center;gap:8px">Tuần (T = Chủ nhật)
+          <select id="runDate"></select></label>
+        <div class="seg" id="kpiSeg">
+          <button data-k="survival" class="on">KPI sinh tồn</button>
+          <button data-k="monthly">KPI tháng</button>
+        </div>
+      </div>
+      <span class="muted" id="loadState"></span>
+    </div>
+    <div class="card">
+      <p class="headline" id="headline">Đang tải…</p>
+      <p class="sub" id="subline" style="margin:4px 0 0"></p>
+    </div>
+    <div class="grid" id="marketGrid" style="margin-bottom:16px"></div>
+    <div class="card">
+      <div class="item-head"><h2 style="margin:0">Phân tích cảnh báo (4 cấp độ)</h2><div class="row" id="previewBtns"></div></div>
+      <div id="alerts"></div>
+    </div>
+    <div class="card">
+      <div class="chart-tools">
+        <h2 style="margin:0;margin-right:auto">Xu hướng 12 tuần</h2>
+        <select id="trendMetric"></select>
+      </div>
+      <div class="legend" id="trendLegend"></div>
+      <div id="chart"><svg id="trendSvg" role="img" aria-label="Biểu đồ xu hướng"></svg><div class="tip" id="tip"></div></div>
+    </div>
+    <div class="card">
+      <h2>Bảng chỉ số chi tiết</h2>
+      <div class="tbl-wrap"><table id="detailTbl"></table></div>
+      <p class="muted" style="margin:8px 0 0;font-size:12px">Tỷ lệ chốt/hủy/đang xử lý tính trên cửa sổ chốt; các chỉ số giao tính trên cửa sổ giao. Đơn tính theo ngày tạo, đếm đơn duy nhất từ data sạch. Nguồn: hv-data.a_data_mart.sales_orders.</p>
+    </div>
+  </section>
+
+  <!-- CẤU HÌNH -->
+  <section id="tab-cfg" class="hidden">
+    <div class="card" id="saveBar" style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+      <span id="saveState" class="sub">Thay đổi được lưu tự động.</span>
+      <div class="row">
+        <button class="btn" id="sendNow">Gửi bản tin ngay</button>
+        <button class="btn" id="rebuild">Làm mới dữ liệu</button>
+        <a class="btn" id="actionsLink" target="_blank" rel="noopener">Xem lượt chạy ↗</a>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Nhóm nhận bản tin</h2>
+      <div class="rcp-wrap">
+        <div>
+          <div id="rcpList"></div>
+          <button class="btn" id="addRcp" style="width:100%">+ Thêm nhóm</button>
+          <div id="addPanel" class="hidden" style="margin-top:8px"></div>
+        </div>
+        <div id="rcpDetail" class="rcp-detail"></div>
+      </div>
+      <label class="checks" style="margin-top:12px"><input type="checkbox" id="sendWhenOk"> Gửi cả những tuần tất cả thị trường đều đạt KPI (bản tin "Đạt")</label>
+    </div>
+
+    <div class="card">
+      <div class="item-head"><h2 style="margin:0">Lịch gửi tự động</h2><button class="btn" id="addSched">+ Thêm lịch</button></div>
+      <p class="muted" style="margin-top:0">Mỗi lịch gửi tới mọi nhóm đã tick ở trên. Bản tin đến trong ~30–60 phút sau giờ hẹn (múi giờ <span id="tzLabel"></span>), lấy T = Chủ nhật gần nhất.</p>
+      <div id="schedules"></div>
+    </div>
+
+    <div class="card">
+      <h2>KPI & thời gian trung bình theo thị trường</h2>
+      <div class="tbl-wrap"><table class="kpi-tbl" id="kpiTbl"></table></div>
+      <p class="muted" style="font-size:12px;margin:8px 0 0">Nhập KPI dạng % (vd 85). Để trống = không cảnh báo chỉ số đó. Cửa sổ dữ liệu: <input type="number" id="windowDays" min="1" max="31" style="width:60px"> ngày.</p>
+    </div>
+
+    <details class="card" id="ghConn">
+      <summary style="cursor:pointer"><b>Kết nối GitHub</b> <span class="muted">— nhập một lần trên mỗi máy để lưu được thay đổi</span></summary>
+      <p class="muted">Tạo fine-grained token chỉ cho repo này, quyền <b>Contents: Read and write</b> và <b>Actions: Read and write</b>. Token chỉ lưu trong trình duyệt này.</p>
+      <div class="form-grid">
+        <label class="field">Repo (owner/tên)<input id="ghRepo" placeholder="owner/repo"></label>
+        <label class="field">Nhánh<input id="ghBranch" value="main"></label>
+        <label class="field">GitHub token<input type="password" id="ghToken" autocomplete="off" placeholder="github_pat_…"></label>
+      </div>
+    </details>
+  </section>
+
+  <!-- LỊCH SỬ -->
+  <section id="tab-hist" class="hidden">
+    <div class="card">
+      <h2>Lịch sử gửi</h2>
+      <div class="tbl-wrap"><table id="histTbl"></table></div>
+    </div>
+  </section>
+</main>
+
+<dialog id="previewDlg">
+  <div id="previewHead" class="lark-head"></div>
+  <div class="lark-body" id="previewBody"></div>
+  <div class="row" style="padding:12px 16px;justify-content:flex-end"><button class="btn" onclick="previewDlg.close()">Đóng</button></div>
+</dialog>
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = (s, el = document) => el.querySelector(s);
+const $$ = (s, el = document) => [...el.querySelectorAll(s)];
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pct = (x, d = 1) => x == null ? '–' : (x * 100).toFixed(d).replace('.', ',') + '%';
+const ppt = x => x == null ? '–' : ((x >= 0 ? '+' : '') + (x * 100).toFixed(1).replace('.', ',') + ' đ%');
+const dm = s => s ? s.slice(8, 10) + '/' + s.slice(5, 7) : '';
+const KPI_METRICS = ['chot', 'giao', 'gtc_clean'];
+const ALL_METRICS = ['chot', 'huy', 'dang_xl', 'cho_giao', 'giao_dvvc', 'giao', 'hoan', 'gtc_clean'];
+const LABEL = { chot: 'Tỷ lệ chốt', huy: 'Tỷ lệ hủy', dang_xl: 'Tỷ lệ đang xử lý', cho_giao: 'Tỷ lệ chờ giao',
+  giao_dvvc: 'Tỷ lệ giao DVVC', giao: 'Tỷ lệ giao', hoan: 'Tỷ lệ hoàn', gtc_clean: 'Tỷ lệ giao TC từ data sạch' };
+const DOW = [['sun','Chủ nhật'],['mon','Thứ 2'],['tue','Thứ 3'],['wed','Thứ 4'],['thu','Thứ 5'],['fri','Thứ 6'],['sat','Thứ 7'],['mon-fri','Thứ 2–6'],['*','Hằng ngày']];
+const WORKFLOW = 'nhip-dap.yml';
+const state = { kpi: 'survival', index: null, report: null, trend: null, cfg: null, cfgSha: null, hidden: new Set() };
+
+function toast(msg, ms = 4000) { const t = $('#toast'); t.textContent = msg; t.style.display = 'block'; clearTimeout(t._h); t._h = setTimeout(() => t.style.display = 'none', ms); }
+const store = {
+  get(k, s = localStorage) { try { return s.getItem(k) || ''; } catch { return ''; } },
+  set(k, v, s = localStorage) { try { v ? s.setItem(k, v) : s.removeItem(k); } catch {} },
+};
+
+/* ---------- Giải mã dữ liệu (AES-256-GCM, PBKDF2-SHA256) ---------- */
+const b64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+const keyCache = new Map();
+async function deriveKey(pwd, salt, iter) {
+  const id = salt + ':' + iter;
+  if (!keyCache.has(id)) {
+    const base = await crypto.subtle.importKey('raw', new TextEncoder().encode(pwd), 'PBKDF2', false, ['deriveKey']);
+    keyCache.set(id, crypto.subtle.deriveKey({ name: 'PBKDF2', salt: b64(salt), iterations: iter, hash: 'SHA-256' }, base, { name: 'AES-GCM', length: 256 }, false, ['decrypt']));
+  }
+  return keyCache.get(id);
+}
+async function loadData(name) {
+  const r = await fetch('data/' + name, { cache: 'no-cache' });
+  if (!r.ok) throw new Error(`Không tải được data/${name} (HTTP ${r.status}) — workflow đã chạy lần nào chưa?`);
+  const obj = await r.json();
+  if (!obj.enc) return obj;
+  const pwd = store.get('dashPwd', sessionStorage);
+  if (!pwd) throw Object.assign(new Error('Cần mật khẩu'), { needPwd: true });
+  try {
+    const key = await deriveKey(pwd, obj.salt, obj.iter);
+    const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64(obj.iv) }, await key, b64(obj.ct));
+    return JSON.parse(new TextDecoder().decode(pt));
+  } catch { throw Object.assign(new Error('Sai mật khẩu'), { needPwd: true }); }
+}
+
+/* ---------- Khởi động ---------- */
+async function boot() {
+  try {
+    state.index = await loadData('index.json');
+  } catch (e) {
+    if (e.needPwd) { showGate(e.message === 'Sai mật khẩu' ? 'Sai mật khẩu, thử lại.' : ''); return; }
+    $('#gate').classList.add('hidden'); $('#tab-dash').classList.remove('hidden'); $('#headline').textContent = e.message; return;
+  }
+  $('#gate').classList.add('hidden'); $('#nav').classList.remove('hidden'); $('#tab-dash').classList.remove('hidden');
+  const qs = new URLSearchParams(location.search);
+  const dates = state.index.dates;
+  $('#runDate').innerHTML = dates.map(d => `<option value="${d}">${dm(d)}/${d.slice(0, 4)}</option>`).join('');
+  $('#runDate').value = dates.includes(qs.get('date')) ? qs.get('date') : state.index.latest;
+  if (qs.get('kpi') === 'monthly') state.kpi = 'monthly';
+  $$('#kpiSeg button').forEach(b => b.classList.toggle('on', b.dataset.k === state.kpi));
+  initGithub();
+  state.cfg = JSON.parse(JSON.stringify(state.index.config));
+  try { state.trend = await loadData('trend.json'); } catch (e) { toast(e.message); }
+  try { state.chats = await loadData('lark_chats.json'); } catch { state.chats = null; }
+  await loadReport();
+}
+function showGate(msg) {
+  $('#gate').classList.remove('hidden');
+  if (msg) $('#gateMsg').textContent = msg;
+  $('#gatePwd').focus();
+}
+$('#gateForm').onsubmit = e => { e.preventDefault(); store.set('dashPwd', $('#gatePwd').value, sessionStorage); keyCache.clear(); boot(); };
+
+/* ---------- Tabs ---------- */
+$$('nav button').forEach(b => b.onclick = () => {
+  $$('nav button').forEach(x => x.classList.toggle('on', x === b));
+  ['dash', 'cfg', 'hist'].forEach(t => $('#tab-' + t).classList.toggle('hidden', t !== b.dataset.tab));
+  if (b.dataset.tab === 'cfg') renderConfig();
+  if (b.dataset.tab === 'hist') loadHistory();
+  if (b.dataset.tab === 'dash') renderTrend();
+});
+
+/* ---------- Dashboard ---------- */
+$$('#kpiSeg button').forEach(b => b.onclick = () => { state.kpi = b.dataset.k; $$('#kpiSeg button').forEach(x => x.classList.toggle('on', x === b)); renderDash(); });
+$('#runDate').onchange = loadReport;
+$('#trendMetric').innerHTML = ALL_METRICS.map(m => `<option value="${m}">${LABEL[m]}</option>`).join('');
+$('#trendMetric').onchange = renderTrend;
+
+async function loadReport() {
+  $('#loadState').textContent = 'Đang tải…';
+  try {
+    state.report = await loadData(`report-${$('#runDate').value}.json`);
+    $('#loadState').textContent = 'Dữ liệu cập nhật ' + new Date(state.index.generated_at).toLocaleString('vi-VN');
+    renderDash(); renderTrend();
+  } catch (e) { $('#loadState').textContent = ''; $('#headline').textContent = 'Lỗi tải dữ liệu: ' + e.message; }
+}
+
+function badge(ok) {
+  if (ok === true) return '<span class="badge ok">✓ Đạt</span>';
+  if (ok === false) return '<span class="badge bad">✕ Không đạt</span>';
+  return '<span class="badge na">— Chưa có KPI</span>';
+}
+function md(s) { return esc(s).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/\*(.+?)\*/g, '<i>$1</i>'); }
+
+function renderDash() {
+  const rep = state.report; if (!rep) return;
+  const k = state.kpi, kname = k === 'survival' ? 'sinh tồn' : 'tháng';
+  const alerts = rep.alerts[k];
+  const scoped = rep.markets.filter(m => KPI_METRICS.some(x => m.status[k][x].target != null));
+  const failing = [...new Set(alerts.map(a => a.market))];
+  $('#headline').textContent = alerts.length
+    ? `${failing.length}/${scoped.length} thị trường chưa đạt KPI ${kname} — ${alerts.length} chỉ số cần xử lý`
+    : `Tất cả ${scoped.length} thị trường đạt KPI ${kname}`;
+  $('#subline').textContent = alerts.length ? 'Nặng nhất: ' + alerts[0].market + ' · ' + alerts[0].headline : `T = ${dm(rep.run_date)}/${rep.run_date.slice(0, 4)}`;
+
+  $('#marketGrid').innerHTML = rep.markets.map(m => {
+    const rows = KPI_METRICS.map(x => {
+      const mv = m.metrics[x], st = m.status[k][x];
+      const delta = mv.prev == null || mv.value == null ? '' : ` · tuần trước ${pct(mv.prev)}`;
+      return `<div class="kpi-row"><span class="lbl">${LABEL[x]}</span>${badge(st.ok)}
+        <span class="val">${pct(mv.value)}</span><span class="muted" style="align-self:center">KPI ${st.target == null ? '–' : pct(st.target, 0)}${st.gap == null ? '' : ' (' + ppt(st.gap) + ')'}</span>
+        <span class="meta">${mv.num.toLocaleString('vi-VN')}/${mv.den.toLocaleString('vi-VN')} đơn${delta}</span></div>`;
+    }).join('');
+    return `<div class="mkt"><div class="mkt-head"><b>${esc(m.market)}</b><span class="muted" style="font-size:12px">chốt ${dm(m.windows.chot[0])}–${dm(m.windows.chot[1])} · giao ${dm(m.windows.giao[0])}–${dm(m.windows.giao[1])}</span></div>${rows}</div>`;
+  }).join('');
+
+  $('#alerts').innerHTML = alerts.length ? alerts.map((a, i) => `
+    <details class="alert" ${i === 0 ? 'open' : ''}>
+      <summary><b>🔴 ${esc(a.market)}</b> · ${esc(a.headline)}</summary>
+      <div class="lv">
+        ${[['what', '1️⃣ Điều gì đã xảy ra'], ['why', '2️⃣ Tại sao'], ['impact', '3️⃣ Nguyên nhân chính & tác động'], ['action', '4️⃣ Chúng ta nên làm gì']]
+          .map(([key, t]) => `<b>${t}</b><ul>${a.levels[key].map(x => `<li>${md(x)}</li>`).join('')}</ul>`).join('')}
+      </div>
+    </details>`).join('') : `<div class="empty">✓ Không có chỉ số nào dưới KPI ${kname}.</div>`;
+
+  $('#previewBtns').innerHTML = [['survival', 'sinh tồn'], ['monthly', 'KPI tháng']].filter(([t]) => rep.cards && rep.cards[t])
+    .map(([t, l]) => `<button class="btn" data-preview="${t}">Xem bản tin ${l}</button>`).join('');
+  $$('[data-preview]').forEach(b => b.onclick = () => showCard(rep.cards[b.dataset.preview]));
+
+  const head = '<tr><th>Thị trường</th>' + ALL_METRICS.map(x => `<th>${LABEL[x]}</th>`).join('') + '</tr>';
+  const body = rep.markets.map(m => '<tr><td><b>' + esc(m.market) + '</b></td>' + ALL_METRICS.map(x => {
+    const st = m.status[k][x]; const bad = st && st.ok === false;
+    return `<td class="${bad ? 'bad' : ''}" title="${m.metrics[x].num}/${m.metrics[x].den}">${bad ? '✕ ' : ''}${pct(m.metrics[x].value)}</td>`;
+  }).join('') + '</tr>').join('');
+  $('#detailTbl').innerHTML = head + body;
+}
+
+/* ---------- Biểu đồ xu hướng (SVG, crosshair + tooltip) ---------- */
+function renderTrend() {
+  const t = state.trend; if (!t || $('#tab-dash').classList.contains('hidden')) return;
+  const metric = $('#trendMetric').value;
+  const markets = Object.keys(t.series);
+  const color = i => `var(--s${(i % 8) + 1})`;
+  $('#trendLegend').innerHTML = markets.map((m, i) => `<label><input type="checkbox" data-m="${m}" ${state.hidden.has(m) ? '' : 'checked'}><span class="sw" style="background:${color(i)}"></span>${m}</label>`).join('');
+  $$('#trendLegend input').forEach(c => c.onchange = () => { c.checked ? state.hidden.delete(c.dataset.m) : state.hidden.add(c.dataset.m); renderTrend(); });
+  const svg = $('#trendSvg'); const W = svg.clientWidth || 800, H = 300, P = { l: 44, r: 44, t: 12, b: 28 };
+  const shown = markets.filter(m => !state.hidden.has(m));
+  const vals = shown.flatMap(m => t.series[m][metric]).filter(v => v != null);
+  if (!vals.length) { svg.innerHTML = `<text x="${W / 2}" y="${H / 2}" text-anchor="middle" fill="var(--muted)">Không có dữ liệu</text>`; return; }
+  let lo = Math.min(...vals), hi = Math.max(...vals); const pad = Math.max((hi - lo) * 0.15, 0.02);
+  lo = Math.max(0, Math.floor((lo - pad) * 20) / 20); hi = Math.min(1, Math.ceil((hi + pad) * 20) / 20);
+  const n = t.dates.length, x = i => P.l + (W - P.l - P.r) * i / Math.max(1, n - 1), y = v => P.t + (H - P.t - P.b) * (1 - (v - lo) / (hi - lo));
+  let g = '';
+  for (let k = 0; k <= 4; k++) { const v = lo + (hi - lo) * k / 4; g += `<line x1="${P.l}" x2="${W - P.r}" y1="${y(v)}" y2="${y(v)}" stroke="var(--grid)"/><text x="${P.l - 6}" y="${y(v) + 4}" text-anchor="end" font-size="11" fill="var(--muted)">${pct(v, 0)}</text>`; }
+  t.dates.forEach((d, i) => { if (n <= 8 || i % 2 === (n - 1) % 2) g += `<text x="${x(i)}" y="${H - 8}" text-anchor="middle" font-size="11" fill="var(--muted)">${dm(d)}</text>`; });
+  markets.forEach((m, i) => {
+    if (state.hidden.has(m)) return;
+    const s = t.series[m][metric]; let path = '', pen = false;
+    s.forEach((v, j) => { if (v == null) { pen = false; return; } path += (pen ? 'L' : 'M') + x(j) + ',' + y(v); pen = true; });
+    g += `<path d="${path}" fill="none" stroke="${color(i)}" stroke-width="2" stroke-linejoin="round"/>`;
+    const lj = s.map((v, j) => v == null ? -1 : j).filter(j => j >= 0).pop();
+    if (lj != null) g += `<circle cx="${x(lj)}" cy="${y(s[lj])}" r="4" fill="${color(i)}" stroke="var(--surface)" stroke-width="2"/><text x="${x(lj) + 8}" y="${y(s[lj]) + 4}" font-size="11" fill="var(--ink-2)">${m}</text>`;
+  });
+  g += `<line id="xh" y1="${P.t}" y2="${H - P.b}" stroke="var(--axis)" stroke-dasharray="3 3" visibility="hidden"/><rect x="${P.l}" y="0" width="${W - P.l - P.r}" height="${H}" fill="transparent" id="hit"/>`;
+  svg.setAttribute('viewBox', `0 0 ${W} ${H}`); svg.innerHTML = g;
+  const tip = $('#tip'), xh = $('#xh');
+  $('#hit').onmousemove = e => {
+    const r = svg.getBoundingClientRect(); const px = (e.clientX - r.left) * W / r.width;
+    const i = Math.max(0, Math.min(n - 1, Math.round((px - P.l) / (W - P.l - P.r) * (n - 1))));
+    xh.setAttribute('x1', x(i)); xh.setAttribute('x2', x(i)); xh.setAttribute('visibility', 'visible');
+    const rows = markets.map((m, k) => [m, k, t.series[m][metric][i]]).filter(([m]) => !state.hidden.has(m)).sort((a, b) => (b[2] ?? -1) - (a[2] ?? -1));
+    tip.innerHTML = `<b>T = ${dm(t.dates[i])}</b> · ${LABEL[metric]}` + rows.map(([m, k, v]) => `<div class="r"><span><span class="sw" style="background:${color(k)}"></span> ${m}</span><b>${pct(v)}</b></div>`).join('');
+    tip.style.display = 'block';
+    const left = x(i) * r.width / W; tip.style.left = Math.min(left + 12, r.width - tip.offsetWidth - 4) + 'px'; tip.style.top = '8px';
+  };
+  $('#hit').onmouseleave = () => { tip.style.display = 'none'; xh.setAttribute('visibility', 'hidden'); };
+}
+window.addEventListener('resize', () => renderTrend());
+
+/* ---------- GitHub API ---------- */
+function initGithub() {
+  let repo = store.get('ghRepo');
+  const m = location.hostname.match(/^([^.]+)\.github\.io$/);
+  if (!repo && m) { const seg = location.pathname.split('/').filter(Boolean)[0]; repo = m[1] + '/' + (seg || m[1] + '.github.io'); }
+  $('#ghRepo').value = repo; $('#ghBranch').value = store.get('ghBranch') || 'main'; $('#ghToken').value = store.get('ghToken');
+  updateActionsLink();
+}
+function updateActionsLink() { $('#actionsLink').href = `https://github.com/${$('#ghRepo').value}/actions/workflows/${WORKFLOW}`; }
+['ghRepo', 'ghBranch', 'ghToken'].forEach(id => $('#' + id).onchange = e => { store.set(id, e.target.value.trim()); updateActionsLink(); });
+async function gh(path, opts = {}) {
+  const token = $('#ghToken').value.trim(), repo = $('#ghRepo').value.trim();
+  if (!repo) throw new Error('Chưa nhập repo (owner/tên)');
+  if (!token && opts.method && opts.method !== 'GET') throw new Error('Chưa nhập GitHub token');
+  const r = await fetch(`https://api.github.com/repos/${repo}${path}`, { ...opts, headers: {
+    Accept: 'application/vnd.github+json', 'X-GitHub-Api-Version': '2022-11-28', ...(token ? { Authorization: 'Bearer ' + token } : {}) } });
+  if (r.status === 204) return null;
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(`GitHub ${r.status}: ${data.message || ''}`);
+  return data;
+}
+const utf8ToB64 = s => { const b = new TextEncoder().encode(s); let bin = ''; b.forEach(c => bin += String.fromCharCode(c)); return btoa(bin); };
+const b64ToUtf8 = s => new TextDecoder().decode(b64(s.replace(/\n/g, '')));
+async function dispatch(cmd, extra = {}) {
+  await gh(`/actions/workflows/${WORKFLOW}/dispatches`, { method: 'POST', body: JSON.stringify({ ref: $('#ghBranch').value.trim() || 'main', inputs: { cmd, ...extra } }) });
+}
+async function withBtn(btn, fn) { btn.disabled = true; try { await fn(); } catch (e) { toast('Lỗi: ' + e.message, 7000); } finally { btn.disabled = false; } }
+
+/* ---------- Cấu hình: tự lưu ---------- */
+const KINDS = [['survival', 'Sinh tồn'], ['monthly', 'KPI tháng']];
+const save = { timer: null, busy: false, dirty: false };
+function setSaveState(msg, bad) { const s = $('#saveState'); s.textContent = msg; s.style.color = bad ? 'var(--critical)' : ''; }
+function hasToken() { return !!$('#ghToken').value.trim() && !!$('#ghRepo').value.trim(); }
+function scheduleSave() {
+  state.cfg = collectConfig();
+  if (!hasToken()) { setSaveState('⚠ Chưa lưu: mở "Kết nối GitHub" ở cuối trang và nhập token (chỉ cần một lần).', true); $('#ghConn').open = true; return; }
+  setSaveState('Đang chờ lưu…'); clearTimeout(save.timer); save.timer = setTimeout(saveConfig, 1200);
+}
+async function saveConfig() {
+  if (save.busy) { save.dirty = true; return; }
+  save.busy = true; save.dirty = false; setSaveState('Đang lưu…');
+  const branch = $('#ghBranch').value.trim() || 'main';
+  const body = () => JSON.stringify({ message: 'config: cập nhật từ dashboard', branch, sha: state.cfgSha,
+    // nhóm vừa thêm nhưng chưa chọn loại bản tin nào thì chưa ghi vào cấu hình
+    content: utf8ToB64(JSON.stringify({ ...state.cfg, recipients: state.cfg.recipients.filter(r => r.survival || r.monthly) }, null, 2) + '\n') });
+  try {
+    if (!state.cfgSha) state.cfgSha = (await gh(`/contents/config/config.json?ref=${encodeURIComponent(branch)}`)).sha;
+    let res;
+    try { res = await gh('/contents/config/config.json', { method: 'PUT', body: body() }); }
+    catch (e) { // file vừa đổi ở nơi khác: lấy sha mới rồi ghi lại
+      if (!/409|422/.test(e.message)) throw e;
+      state.cfgSha = (await gh(`/contents/config/config.json?ref=${encodeURIComponent(branch)}`)).sha;
+      res = await gh('/contents/config/config.json', { method: 'PUT', body: body() });
+    }
+    state.cfgSha = res.content.sha;
+    setSaveState('✓ Đã lưu lúc ' + new Date().toLocaleTimeString('vi-VN') + '. Áp dụng từ lần gửi kế tiếp.');
+  } catch (e) { setSaveState('✕ Lỗi lưu: ' + e.message, true); }
+  finally { save.busy = false; if (save.dirty) saveConfig(); }
+}
+$('#tab-cfg').addEventListener('change', e => { if (!e.target.closest('#ghConn')) scheduleSave(); });
+
+$('#rebuild').onclick = e => withBtn(e.target, async () => { await dispatch('build'); toast('Đang làm mới dữ liệu — tải lại trang sau vài phút.'); });
+$('#sendNow').onclick = e => {
+  const d = $('#runDate').value, n = state.cfg.recipients.filter(r => r.survival || r.monthly).length;
+  if (!n) { toast('Chưa có nhóm nào được tick nhận bản tin.'); return; }
+  if (!confirm(`Gửi bản tin T = ${d} tới ${n} nhóm đã đăng ký ngay bây giờ?`)) return;
+  withBtn(e.target, async () => { await dispatch('send', { date: d }); toast('Đã yêu cầu gửi — thường mất 1–2 phút. Xem kết quả ở tab Lịch sử gửi.', 6000); });
+};
+
+/* ---------- Nhóm nhận bản tin: danh sách + chi tiết ---------- */
+const liveChats = () => (state.chats && state.chats.chats) || [];
+const liveName = id => (liveChats().find(c => c.chat_id === id) || {}).name;
+const botIn = id => !state.chats || liveChats().some(c => c.chat_id === id);  // chưa có danh sách thì không báo động
+function rcpSummary(r) {
+  const kinds = KINDS.filter(([k]) => r[k]).map(([, l]) => l).join(' + ');
+  if (!kinds) return 'Chưa chọn bản tin — chưa được lưu';
+  return kinds + ' · ' + (r.markets && r.markets.length ? r.markets.join(', ') : 'tất cả thị trường');
+}
+
+function renderRecipients() {
+  const list = state.cfg.recipients;
+  if (state.sel && !list.some(r => r.chat_id === state.sel)) state.sel = null;
+  if (!state.sel && list.length) state.sel = list[0].chat_id;
+  $('#rcpList').innerHTML = list.map(r => `
+    <button class="rcp ${r.chat_id === state.sel ? 'on' : ''}" data-sel="${esc(r.chat_id)}">
+      <b>${esc(liveName(r.chat_id) || r.name)}</b>
+      <small>${esc(rcpSummary(r))}</small>
+      ${botIn(r.chat_id) ? '' : '<span class="badge bad" style="margin-top:4px">Bot đã rời nhóm</span>'}
+    </button>`).join('') || '<p class="muted" style="margin:0 0 8px">Chưa có nhóm nào nhận bản tin.</p>';
+
+  const r = list.find(x => x.chat_id === state.sel);
+  const markets = Object.keys(state.cfg.markets);
+  $('#rcpDetail').innerHTML = !r ? '<div class="empty">Bấm "+ Thêm nhóm" để chọn nhóm Lark nhận bản tin.</div>' : `
+    <h3>${esc(liveName(r.chat_id) || r.name)}</h3>
+    ${botIn(r.chat_id) ? '<span class="badge ok">✓ Bot đang ở trong nhóm</span>' : '<span class="badge bad">✕ Bot đã rời nhóm — thêm lại Bot trong Lark để tiếp tục nhận</span>'}
+    <div class="sec"><b>Nhận bản tin</b>
+      ${KINDS.map(([k, l]) => `<label class="toggle"><input type="checkbox" data-kind="${k}" ${r[k] ? 'checked' : ''}> Cảnh báo KPI ${l === 'Sinh tồn' ? 'sinh tồn' : 'tháng'}</label>`).join('')}
+      ${r.survival || r.monthly ? '' : '<p class="muted" style="margin:0;font-size:12px">Chọn ít nhất một loại bản tin để lưu nhóm này.</p>'}
+    </div>
+    <div class="sec"><b>Thị trường</b>
+      <div class="checks">${markets.map(m => `<label><input type="checkbox" data-mk="${m}" ${(r.markets || []).includes(m) ? 'checked' : ''}> ${m}</label>`).join('')}</div>
+      <p class="muted" style="margin:6px 0 0;font-size:12px">Bỏ trống = nhận cảnh báo của tất cả thị trường.</p>
+    </div>
+    <div class="sec row">
+      <button class="btn" data-act="test">Gửi thử</button>
+      <button class="btn danger" data-act="remove">Bỏ nhóm khỏi danh sách</button>
+    </div>`;
+}
+
+function renderAddPanel() {
+  const taken = new Set(state.cfg.recipients.map(r => r.chat_id));
+  const free = liveChats().filter(c => !taken.has(c.chat_id));
+  const updated = state.chats ? 'Danh sách cập nhật ' + new Date(state.chats.updated_at).toLocaleString('vi-VN') : 'Chưa có danh sách nhóm';
+  $('#addPanel').innerHTML = `<div class="rcp-detail" style="min-height:0;padding:0;overflow:hidden">
+    ${free.map(c => `<button class="pick" data-add="${esc(c.chat_id)}">${esc(c.name)}</button>`).join('')
+      || '<p class="muted" style="margin:0;padding:10px">Không còn nhóm nào khác có Bot. Thêm Bot <b>AI Analyst HVH</b> vào nhóm trong Lark, rồi bấm "Làm mới".</p>'}
+    <div class="row" style="padding:8px 10px;justify-content:space-between"><span class="muted" style="font-size:12px">${updated}</span>
+      <button class="btn" data-act="refresh">Làm mới</button></div></div>`;
+}
+
+$('#addRcp').onclick = () => { const p = $('#addPanel'); p.classList.toggle('hidden'); if (!p.classList.contains('hidden')) renderAddPanel(); };
+$('#addPanel').onclick = e => {
+  const add = e.target.closest('[data-add]');
+  if (add) {
+    const id = add.dataset.add;
+    state.cfg.recipients.push({ chat_id: id, name: liveName(id) || id, survival: false, monthly: false, markets: [] });
+    state.sel = id; $('#addPanel').classList.add('hidden'); renderRecipients();
+    toast('Đã thêm nhóm — chọn loại bản tin ở bên phải để lưu.');
+  }
+  if (e.target.dataset.act === 'refresh')
+    withBtn(e.target, async () => { await dispatch('chats'); toast('Đang lấy danh sách nhóm từ Lark — tải lại trang sau 1–2 phút.', 6000); });
+};
+$('#rcpList').onclick = e => { const b = e.target.closest('[data-sel]'); if (b) { state.sel = b.dataset.sel; renderRecipients(); } };
+$('#rcpDetail').addEventListener('change', () => {  // chạy trước listener tự lưu của #tab-cfg
+  const r = state.cfg.recipients.find(x => x.chat_id === state.sel); if (!r) return;
+  KINDS.forEach(([k]) => r[k] = $(`#rcpDetail [data-kind=${k}]`).checked);
+  r.markets = $$('#rcpDetail [data-mk]').filter(i => i.checked).map(i => i.dataset.mk);
+  renderRecipients();
+});
+$('#rcpDetail').onclick = e => {
+  const act = e.target.dataset.act; if (!act) return;
+  const r = state.cfg.recipients.find(x => x.chat_id === state.sel); if (!r) return;
+  const name = liveName(r.chat_id) || r.name;
+  if (act === 'test') withBtn(e.target, async () => { await dispatch('test', { groups: r.chat_id }); toast(`Đã yêu cầu gửi tin thử tới "${name}" — thường mất 1–2 phút.`, 6000); });
+  if (act === 'remove') {
+    if (!confirm(`Bỏ "${name}" khỏi danh sách nhận bản tin?`)) return;
+    state.cfg.recipients = state.cfg.recipients.filter(x => x !== r); state.sel = null; renderRecipients(); scheduleSave();
+  }
+};
+
+function renderConfig() {
+  const c = state.cfg; if (!c) return;
+  const markets = Object.keys(c.markets);
+  $('#tzLabel').textContent = c.timezone;
+  $('#windowDays').value = c.window_days;
+  $('#sendWhenOk').checked = !!c.send_when_ok;
+  renderRecipients();
+  if (!$('#addPanel').classList.contains('hidden')) renderAddPanel();
+
+  $('#schedules').innerHTML = c.schedules.map((s, i) => `
+    <div class="item" data-i="${i}">
+      <div class="item-head">
+        <input data-f="name" value="${esc(s.name)}" style="font-weight:600;min-width:200px">
+        <div class="row"><label class="checks"><input type="checkbox" data-f="enabled" ${s.enabled ? 'checked' : ''}> Bật</label>
+          <button class="btn danger" data-act="del">Xóa</button></div>
+      </div>
+      <div class="row">
+        <label class="field">Ngày<select data-f="day_of_week">${DOW.map(([v, l]) => `<option value="${v}" ${s.day_of_week === v ? 'selected' : ''}>${l}</option>`).join('')}</select></label>
+        <label class="field">Giờ<input type="time" data-f="time" value="${String(s.hour).padStart(2, '0')}:${String(s.minute).padStart(2, '0')}"></label>
+      </div>
+    </div>`).join('') || '<div class="empty">Chưa có lịch.</div>';
+
+  const lv = [['chot', 'Chốt'], ['giao', 'Giao'], ['gtc_clean', 'GTC/data sạch']];
+  const v = x => x == null ? '' : +(x * 100).toFixed(2);
+  $('#kpiTbl').innerHTML = `<tr><th>Thị trường</th><th>TG TB chốt (ngày)</th><th>TG TB giao (ngày)</th>${lv.map(([, l]) => `<th>${l} · sinh tồn %</th><th>${l} · tháng %</th>`).join('')}</tr>` +
+    markets.map(m => { const mc = c.markets[m], kp = mc.kpi || {};
+      return `<tr data-m="${m}"><td><b>${m}</b></td><td><input type="number" data-f="chot_days" value="${mc.chot_days}" min="0" max="60"></td><td><input type="number" data-f="giao_days" value="${mc.giao_days}" min="0" max="60"></td>` +
+        lv.map(([k]) => `<td><input type="number" step="0.1" data-k="${k}" data-l="survival" value="${v(kp[k]?.survival)}"></td><td><input type="number" step="0.1" data-k="${k}" data-l="monthly" value="${v(kp[k]?.monthly)}"></td>`).join('') + '</tr>';
+    }).join('');
+}
+
+function collectConfig() {
+  const c = JSON.parse(JSON.stringify(state.cfg));
+  c.window_days = +$('#windowDays').value || 7;
+  c.send_when_ok = $('#sendWhenOk').checked;
+  // recipients được cập nhật trực tiếp trong state.cfg bởi panel "Nhóm nhận bản tin"
+  c.schedules = $$('#schedules .item').map(el => {
+    const s = c.schedules[+el.dataset.i];
+    $$('[data-f]', el).forEach(i => { if (i.dataset.f === 'time') { const [h, m] = i.value.split(':'); s.hour = +h; s.minute = +m; } else s[i.dataset.f] = i.type === 'checkbox' ? i.checked : i.value; });
+    return s;
+  });
+  $$('#kpiTbl tr[data-m]').forEach(tr => {
+    const mc = c.markets[tr.dataset.m]; mc.kpi = mc.kpi || {};
+    mc.chot_days = +$('[data-f=chot_days]', tr).value; mc.giao_days = +$('[data-f=giao_days]', tr).value;
+    $$('[data-k]', tr).forEach(i => { const k = i.dataset.k; mc.kpi[k] = mc.kpi[k] || {}; mc.kpi[k][i.dataset.l] = i.value === '' ? null : +i.value / 100; });
+  });
+  return c;
+}
+
+$('#addSched').onclick = () => { state.cfg = collectConfig(); state.cfg.schedules.push({ id: 's-' + Math.random().toString(36).slice(2, 10), name: 'Lịch mới', day_of_week: 'sun', hour: 8, minute: 0, enabled: true }); renderConfig(); scheduleSave(); };
+$('#schedules').onclick = e => {
+  if (e.target.dataset.act !== 'del') return;
+  const i = +e.target.closest('.item').dataset.i; state.cfg = collectConfig();
+  if (!confirm(`Xóa lịch "${state.cfg.schedules[i].name}"?`)) return;
+  state.cfg.schedules.splice(i, 1); renderConfig(); scheduleSave();
+};
+
+function showCard(card) {
+  const h = $('#previewHead'); h.className = 'lark-head ' + (card.header.template || 'blue'); h.textContent = card.header.title.content;
+  $('#previewBody').innerHTML = card.elements.map(el => {
+    if (el.tag === 'hr') return '<hr>';
+    if (el.tag === 'markdown') return '<p>' + md(el.content).replace(/\n/g, '<br>') + '</p>';
+    if (el.tag === 'note') return '<p class="note">' + esc(el.elements.map(x => x.content).join(' ')) + '</p>';
+    if (el.tag === 'action') return '<p>' + el.actions.map(a => `<a class="btn primary" href="${esc(a.url)}" target="_blank" rel="noopener">${esc(a.text.content)}</a>`).join(' ') + '</p>';
+    return '';
+  }).join('');
+  $('#previewDlg').showModal();
+}
+
+/* ---------- Lịch sử ---------- */
+async function loadHistory() {
+  try {
+    const h = await loadData('history.json');
+    $('#histTbl').innerHTML = '<tr><th>Thời điểm</th><th>Kích hoạt</th><th>T</th><th>Nhóm</th><th>Thị trường không đạt</th><th>Trạng thái</th></tr>' +
+      (h.map(x => `<tr><td>${esc(String(x.at).replace('T', ' ').slice(0, 19))}</td><td>${esc(x.trigger)}</td><td>${esc(x.run_date)}</td><td>${esc(x.group)}</td><td>${esc((x.failing || []).join(', ') || '—')}</td><td class="${x.status === 'lỗi' ? 'bad' : ''}">${esc(x.status)}${x.error ? ': ' + esc(x.error) : ''}</td></tr>`).join('') || '<tr><td colspan="6" class="muted">Chưa có lần gửi nào.</td></tr>');
+  } catch (e) { toast('Lỗi: ' + e.message); }
+}
+
+boot();
+</script>
+</body>
+</html>
