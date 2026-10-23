@@ -57,22 +57,22 @@
   "draft_id": "20261018-survival-170340-CAM-ID-ML-PH-TH-VN"
  },
  {
-  "at": "2026-10-23T17:15:33+07:00",
+  "at": "2026-10-23T17:16:54+07:00",
   "trigger": "duyệt bản nháp",
   "run_date": "2026-10-18",
   "schedule_id": null,
   "occurrence": null,
-  "group_id": "oc_85ff565a79dce2b07ffed48087b450b3:survival",
-  "group": "[SA] Duyệt bản tin",
-  "kpi_type": "survival",
-  "draft_id": "20261018-survival-170340-CAM-ID-ML-PH-TH-VN",
+  "group_id": "oc_3d4fb5f646a7a9d85b4f3e37813c6eab:monthly",
+  "group": "[HVH] Cập nhật bản tin KPIs",
+  "kpi_type": "monthly",
+  "draft_id": "20261018-monthly-170340",
   "failing": [
    "ML",
    "TH",
    "VN"
   ],
   "author": "mẫu",
-  "message_id": "om_x100b628772aaa0a0ffde21eed5c31b7",
+  "message_id": "om_x100b62870fb8293cffbc30367d4c2c3",
   "status": "đã gửi"
  }
 ]
