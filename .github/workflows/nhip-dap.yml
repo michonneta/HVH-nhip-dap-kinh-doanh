@@ -25,6 +25,7 @@ on:
 
 permissions:
   contents: write
+  pages: write      # yêu cầu build lại GitHub Pages sau khi commit dữ liệu
 
 concurrency:
   group: nhip-dap
@@ -76,5 +77,9 @@ jobs:
           git add docs/data state
           if git diff --cached --quiet; then echo "Không có thay đổi"; exit 0; fi
           git commit -m "data: cập nhật $(date -u +%Y-%m-%dT%H:%MZ) [${{ github.event_name }}]"
-          for i in 1 2 3; do git pull --rebase -X theirs && git push && exit 0; sleep 5; done
-          exit 1
+          for i in 1 2 3; do git pull --rebase -X theirs && git push && break; sleep 5; [ "$i" = 3 ] && exit 1; done
+          # Commit bằng GITHUB_TOKEN không tự kích hoạt Pages: gọi API yêu cầu build lại để Dashboard có dữ liệu mới
+          curl -fsS -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/${{ github.repository }}/pages/builds" || echo "::warning::Không yêu cầu được Pages build"
+        env:
+          GH_TOKEN: ${{ github.token }}
