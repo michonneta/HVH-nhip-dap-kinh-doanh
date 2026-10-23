@@ -1,0 +1,59 @@
+[
+ {
+  "at": "2026-10-23T17:03:31+07:00",
+  "trigger": "gửi thủ công",
+  "run_date": "2026-10-18",
+  "schedule_id": null,
+  "occurrence": null,
+  "group_id": "oc_513fd0e6953e2440e4cdee34ff3a6829:survival",
+  "group": "[HVH] Cập nhật bản tin Sinh tồn",
+  "kpi_type": "survival",
+  "failing": [
+   "ML",
+   "TH",
+   "VN"
+  ],
+  "alerts": 5,
+  "author": "mẫu",
+  "status": "chờ duyệt",
+  "draft_id": "20261018-survival-170339"
+ },
+ {
+  "at": "2026-10-23T17:03:36+07:00",
+  "trigger": "gửi thủ công",
+  "run_date": "2026-10-18",
+  "schedule_id": null,
+  "occurrence": null,
+  "group_id": "oc_3d4fb5f646a7a9d85b4f3e37813c6eab:monthly",
+  "group": "[HVH] Cập nhật bản tin KPIs",
+  "kpi_type": "monthly",
+  "failing": [
+   "ML",
+   "TH",
+   "VN"
+  ],
+  "alerts": 6,
+  "author": "mẫu",
+  "status": "chờ duyệt",
+  "draft_id": "20261018-monthly-170340"
+ },
+ {
+  "at": "2026-10-23T17:03:37+07:00",
+  "trigger": "gửi thủ công",
+  "run_date": "2026-10-18",
+  "schedule_id": null,
+  "occurrence": null,
+  "group_id": "oc_85ff565a79dce2b07ffed48087b450b3:survival",
+  "group": "[SA] Duyệt bản tin",
+  "kpi_type": "survival",
+  "failing": [
+   "ML",
+   "TH",
+   "VN"
+  ],
+  "alerts": 5,
+  "author": "mẫu",
+  "status": "chờ duyệt",
+  "draft_id": "20261018-survival-170340-CAM-ID-ML-PH-TH-VN"
+ }
+]
