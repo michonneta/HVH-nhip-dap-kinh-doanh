@@ -141,14 +141,7 @@
       "name": "[SA] Duyệt bản tin",
       "survival": true,
       "monthly": false,
-      "markets": [
-        "ML",
-        "PH",
-        "CAM",
-        "TH",
-        "VN",
-        "ID"
-      ]
+      "markets": []
     }
   ],
   "schedules": [
