@@ -21,11 +21,13 @@ on:
         required: false
   push:
     branches: [main]
-    paths: ["config/config.json"]   # sửa cấu hình xong thì build lại dashboard
+    # sửa cấu hình hoặc giao diện xong thì build lại dữ liệu và triển khai Dashboard
+    paths: ["config/config.json", "docs/**", "!docs/data/**"]
 
 permissions:
   contents: write
-  pages: write      # yêu cầu build lại GitHub Pages sau khi commit dữ liệu
+  pages: write      # triển khai Dashboard lên GitHub Pages
+  id-token: write
 
 concurrency:
   group: nhip-dap
@@ -35,6 +37,8 @@ jobs:
   run:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    outputs:
+      changed: ${{ steps.save.outputs.changed }}
     steps:
       - uses: actions/checkout@v4
 
@@ -70,16 +74,33 @@ jobs:
           python -m pipeline.run "$CMD" "${ARGS[@]}"
 
       - name: Lưu dữ liệu dashboard & nhật ký gửi
+        id: save
         if: always()
         run: |
           git config user.name "nhip-dap-bot"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add docs/data state
-          if git diff --cached --quiet; then echo "Không có thay đổi"; exit 0; fi
+          if git diff --cached --quiet; then echo "Không có thay đổi"; echo "changed=false" >> "$GITHUB_OUTPUT"; exit 0; fi
           git commit -m "data: cập nhật $(date -u +%Y-%m-%dT%H:%MZ) [${{ github.event_name }}]"
           for i in 1 2 3; do git pull --rebase -X theirs && git push && break; sleep 5; [ "$i" = 3 ] && exit 1; done
-          # Commit bằng GITHUB_TOKEN không tự kích hoạt Pages: gọi API yêu cầu build lại để Dashboard có dữ liệu mới
-          curl -fsS -X POST -H "Authorization: Bearer $GH_TOKEN" -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/${{ github.repository }}/pages/builds" || echo "::warning::Không yêu cầu được Pages build"
-        env:
-          GH_TOKEN: ${{ github.token }}
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+  # Triển khai thư mục docs/ (Dashboard + dữ liệu đã mã hóa) lên GitHub Pages.
+  # Cần: Settings → Pages → Source = "GitHub Actions".
+  deploy:
+    needs: run
+    if: always() && (needs.run.outputs.changed == 'true' || github.event_name != 'schedule')
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main          # lấy cả commit dữ liệu vừa tạo ở job trên
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -39,7 +39,8 @@ BigQuery ──API──▶ dữ liệu Dashboard (docs/data, mã hóa) ──�
 3. Bấm **View on GitHub** để mở repo trên trình duyệt, làm tiếp các bước dưới.
 4. Mỗi khi sửa code trên máy: GitHub Desktop → **Fetch/Pull origin** (lấy dữ liệu bot vừa commit) → nhập mô tả → **Commit to main** → **Push origin**.
 
-**Settings → Pages → Build and deployment**: *Deploy from a branch* → `main` / `/docs`.
+**Settings → Pages → Build and deployment → Source**: chọn **GitHub Actions** (workflow tự triển khai thư mục `docs/`
+sau mỗi lần cập nhật dữ liệu; commit của bot không tự kích hoạt kiểu "Deploy from a branch").
 Trang sẽ ở `https://<owner>.github.io/<repo>/`.
 
 GitHub Pages miễn phí yêu cầu repo **public**: mã nguồn và `config/config.json` (KPI, chat_id) ai cũng xem được.
