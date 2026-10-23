@@ -2,12 +2,17 @@
 
 Chạy hoàn toàn trên GitHub, không cần server:
 
+Luồng làm việc của một Data Analyst: **Dashboard** (dữ liệu tự cập nhật) → **AI Analyst đọc dữ liệu Dashboard và viết
+bản tin** → người duyệt → gửi nhóm Lark.
+
 ```
-GitHub Actions (mỗi 30 phút)                       GitHub Pages (https://<owner>.github.io/<repo>/)
-  ├─ BigQuery API: hv-data.a_data_mart.sales_orders     └─ docs/index.html đọc docs/data/*.json (mã hóa AES-256)
-  ├─ tính chỉ số + phân tích 4 cấp độ                        ├─ Dashboard / Lịch sử gửi
-  ├─ ghi docs/data (mã hóa) + state/send_log.json            └─ Cấu hình → commit config/config.json qua GitHub API
-  └─ Bot Lark "AI Analyst HVH" gửi bản tin tới chat_id           Gửi ngay / Làm mới → kích hoạt workflow
+BigQuery ──API──▶ dữ liệu Dashboard (docs/data, mã hóa) ──▶ GitHub Pages: Dashboard · Bản tin · Cấu hình · Lịch sử
+                         │
+                         ▼  (đến lịch gửi)
+                  AI Analyst (Claude) viết bản tin ── kiểm tra số liệu ──▶ BẢN NHÁP ──▶ nhóm duyệt (Lark)
+                                                                                │  bấm "Duyệt gửi" trên Dashboard
+                                                                                ▼
+                                                              Bot "AI Analyst HVH" gửi tới các nhóm đã đăng ký
 ```
 
 ## Cấu trúc
@@ -17,9 +22,10 @@ GitHub Actions (mỗi 30 phút)                       GitHub Pages (https://<own
 | `tools/test-lark.ps1` | Thử gửi tin bằng Bot ngay trên máy Windows (không cần GitHub) |
 | `pipeline/metrics.py` | SQL BigQuery + tính 8 chỉ số |
 | `pipeline/analysis.py` | Phân tích 4 cấp độ |
-| `pipeline/bulletin.py` | Bản tin Lark (Kim tự tháp Minto, giọng "loa phường") |
+| `pipeline/ai_writer.py` | AI Analyst: đọc dữ liệu Dashboard, viết bản tin (Claude API), kiểm tra số liệu |
+| `pipeline/bulletin.py` | Khung bản tin Lark (Kim tự tháp Minto, giọng "loa phường"); mẫu dự phòng khi AI lỗi |
 | `pipeline/lark.py` | Lark app bot: tenant token, gửi card theo chat_id, liệt kê nhóm |
-| `pipeline/run.py` | `tick` / `build` / `send` / `test` / `chats` |
+| `pipeline/run.py` | `tick` / `build` / `send` / `test` / `chats` / `approve` / `redraft` / `reject` |
 | `.github/workflows/nhip-dap.yml` | Lịch chạy + chạy tay |
 | `docs/` | Trang GitHub Pages; `docs/data/` do workflow sinh ra |
 | `state/send_log.json` | Nhật ký gửi, chống gửi trùng |
@@ -56,6 +62,8 @@ tạo khóa JSON → lưu nguyên nội dung vào secret `GCP_SA_KEY`.
 | `LARK_APP_ID` | App ID (`cli_…`) |
 | `LARK_APP_SECRET` | App Secret (mục Credentials & Basic Info) |
 | `DASHBOARD_PASSWORD` | Mật khẩu mở dashboard (gửi cho người được xem) |
+| `CLAUDE_CODE_OAUTH_TOKEN` | **Dùng gói Claude Pro/Max** cho AI Analyst: trên máy chạy `claude setup-token`, đăng nhập, dán token nhận được (`sk-ant-oat…`) |
+| `ANTHROPIC_API_KEY` | *(Thay thế)* API key trả phí theo lượng dùng tại platform.claude.com. Có cả hai thì dùng API key |
 
 ### 5. Chạy lần đầu
 1. **Actions → Nhịp đập kinh doanh → Run workflow**, `cmd = build`. Sau ~2 phút mở trang Pages, nhập mật khẩu.
@@ -72,6 +80,36 @@ Bot đã kết nối API một lần (Secrets), mọi thứ còn lại tự đ�
 
 Bấm **Bỏ nhóm khỏi danh sách** = nhóm ngừng nhận. Xóa Bot khỏi nhóm trong Lark = hệ thống tự ngừng gửi (nhóm hiện nhãn "Bot đã rời nhóm").
 Nhóm đổi tên trong Lark thì tên trên dashboard và bản tin tự cập nhật.
+
+## Dashboard "Báo cáo chất lượng chuyển đổi"
+- **Logo**: đặt file logo gốc (PNG/SVG nền trong suốt) tại `docs/assets/logo.png`; chưa có file thì hiển thị chữ "HV HOLDINGS".
+  Màu theo bảng màu thương hiệu (#26a557, #71bf44, #06a7e1, #58585a); đỏ / cam chỉ dùng cho không đạt / gần đạt / xấu đi.
+- **Tab Tổng quan**: bộ lọc Loại báo cáo (Tuần / Tháng / Quý), Từ – Đến, Thị trường, BU, Kênh bán, Team, Seller, SubBrand,
+  SKU / Sản phẩm (tìm theo mã hoặc tên), Province →
+  1. 3 thẻ KPI (tỷ lệ chốt, tỷ lệ giao, tỷ lệ giao thành công từ data sạch) của kỳ cuối, so với kỳ trước và KPI;
+  2. Bảng tổng hợp theo thị trường × kỳ, dòng phụ so với KPI sinh tồn / KPI tháng (xanh đạt, cam thiếu < `near_pp` điểm %,
+     đỏ không đạt), cột xu hướng (sparkline) và cảnh báo;
+  3. Bảng chi tiết theo tab Thị trường / BU / Kênh bán / Team / Seller / SubBrand / SKU / Province với đủ 16 chỉ số;
+  4. Top lý do hủy đơn và top lý do hoàn (số đơn, tỷ trọng).
+- **Dữ liệu**: mỗi lần build, `pipeline/cube.py` gom đơn data sạch theo ngày tạo × chiều lọc × trạng thái × lý do
+  (~400 ngày gần nhất), nén + mã hóa thành `docs/data/cube.json`; trình duyệt tự lọc và tính (vài chục ms).
+  Kỳ tuần dùng đúng quy tắc cửa sổ của bản tin nên số trên Dashboard khớp bản tin.
+- **Tab Bản tin**: menu lịch sử bản tin bên trái, bản tin mới nhất hiển thị chính; duyệt / viết lại / hủy bản nháp.
+- **Tab Cấu hình**: nhóm nhận bản tin, AI Analyst & duyệt, lịch gửi, KPI, kết nối GitHub, nhật ký gửi.
+
+## Bản tin: AI viết → duyệt → gửi
+- **Kết nối AI**: với gói Claude Pro/Max, workflow chạy Claude Code CLI không tương tác (`claude -p --json-schema …`)
+  bằng `CLAUDE_CODE_OAUTH_TOKEN`; lượt dùng tính vào hạn mức của gói (mỗi bản tin ~1 phút). Có `ANTHROPIC_API_KEY` thì gọi
+  Claude API trực tiếp.
+- **AI Analyst** (Claude, model `claude-opus-5-5`) đọc đúng bộ dữ liệu Dashboard của kỳ báo cáo: chỉ số, KPI,
+  so với tuần trước và các phát hiện code đã tính sẵn (phân khúc gây thiếu hụt, lý do hủy/hoàn). AI viết kết luận,
+  4 cấp độ cho từng chỉ số không đạt và đề xuất hành động. AI không tự tính số.
+- **Kiểm tra số liệu**: mọi con số trong bài phải có trong dữ liệu; sai thì AI viết lại 1 lần, vẫn sai hoặc AI lỗi
+  thì bản tin dùng mẫu theo quy tắc (không bao giờ lỡ lịch). Bản tin ghi rõ "AI Analyst" hay "mẫu quy tắc".
+- **Duyệt** (bật mặc định, tab Cấu hình → *AI Analyst & duyệt bản tin*): đến lịch, bản tin thành **bản nháp**, gửi vào
+  **nhóm duyệt** (tùy chọn) với nhãn [NHÁP]. Vào Dashboard → tab **Bản tin**: **Duyệt gửi** / **Viết lại** / **Hủy**.
+  Tắt duyệt thì bản tin gửi thẳng tới các nhóm theo lịch.
+- Bản nháp lưu mã hóa trong `docs/data/drafts.json`.
 
 ## Vận hành
 - **Lịch gửi**: workflow chạy mỗi 30 phút; lịch đến hạn (theo `timezone` trong cấu hình) gửi tới mọi nhóm đã tick ở lượt

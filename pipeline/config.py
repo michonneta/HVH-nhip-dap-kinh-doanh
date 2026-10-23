@@ -33,6 +33,13 @@ def validate(cfg: dict) -> dict:
     cfg.setdefault("timezone", "Asia/Ho_Chi_Minh")
     cfg.setdefault("dashboard_url", "")
     cfg["send_when_ok"] = bool(cfg.get("send_when_ok", False))
+    cfg["near_pp"] = float(cfg.get("near_pp", 2))  # Dashboard: thiếu dưới ngưỡng này (điểm %) = "gần đạt" (cam)
+    # AI Analyst viết bản tin (cần secret ANTHROPIC_API_KEY); duyệt: bản nháp vào nhóm duyệt, bấm Duyệt mới gửi
+    cfg["ai"] = {"enabled": bool((cfg.get("ai") or {}).get("enabled", True))}
+    review = cfg.get("review") or {}
+    cfg["review"] = {"enabled": bool(review.get("enabled", True)), "chat_id": review.get("chat_id", "") or ""}
+    if cfg["review"]["chat_id"] and not cfg["review"]["chat_id"].startswith("oc_"):
+        raise ValueError("Nhóm duyệt: chat_id không hợp lệ")
     # recipients: nhóm Lark (chat_id do Bot tự lấy) + loại bản tin nhóm muốn nhận
     seen = set()
     for r in cfg.setdefault("recipients", []):

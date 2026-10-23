@@ -17,8 +17,7 @@ from zoneinfo import ZoneInfo
 
 from . import config as config_mod
 from . import metrics
-from .analysis import alerts_for
-from .bulletin import build_bulletin, test_card
+from .bulletin import build_bulletin, draft_card, test_card
 from .config import ROOT
 
 log = logging.getLogger("nhip-dap")
@@ -27,9 +26,6 @@ STATE_DIR = ROOT / "state"
 SEND_LOG = STATE_DIR / "send_log.json"
 BUILD_STATE = STATE_DIR / "build.json"
 CHATS_STATE = STATE_DIR / "lark_chats.sha256"   # chỉ lưu dấu vân tay, tên nhóm nằm trong file đã mã hóa
-TREND_WEEKS = 12          # số tuần trên biểu đồ xu hướng
-REPORT_WEEKS = 4          # số tuần gần nhất được tính lại phân tích mỗi lần build (đơn còn đổi trạng thái)
-KEEP_WEEKS = 26           # giữ file báo cáo tuần trong docs/data tối đa
 CATCHUP_HOURS = 6         # lịch bị trễ (GitHub cron chậm) vẫn gửi bù trong khoảng này
 BUILD_EVERY_HOURS = float(os.getenv("BUILD_EVERY_HOURS", "20"))
 DOW_NAMES = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
@@ -71,8 +67,13 @@ class _Sealer:
             self.enc = None
             log.warning("Chưa đặt DASHBOARD_PASSWORD: dữ liệu dashboard sẽ ở dạng KHÔNG mã hóa (công khai trên Pages)")
 
-    def write(self, name, obj):
-        _write_json(DATA_DIR / name, self.enc.seal(obj) if self.enc else obj)
+    def write(self, name, obj, gz=False):
+        if self.enc:
+            _write_json(DATA_DIR / name, self.enc.seal(obj, gz=gz))
+        else:
+            DATA_DIR.mkdir(parents=True, exist_ok=True)
+            (DATA_DIR / name).write_text(json.dumps(obj, ensure_ascii=False, separators=(",", ":"), default=str),
+                                         encoding="utf-8")
 
 
 def _bot():
@@ -106,40 +107,23 @@ def sync_chats(cfg, sealer=None):
 
 # ---------------------------------------------------------------- build dashboard
 def build(cfg, sealer=None) -> dict:
+    """Làm mới dữ liệu Dashboard (khối cube, trình duyệt tự lọc/tính) + báo cáo kỳ gần nhất cho bản tin."""
+    from .cube import build_cube
     sealer = sealer or _Sealer()
-    latest = metrics.last_sunday(_now(cfg).date())
-    sundays = [latest - timedelta(days=7 * i) for i in range(TREND_WEEKS)]
-    summary = metrics.fetch_summary(sundays, cfg)
-    dash_url = _dashboard_url(cfg)
-
-    reports = {}
-    for d in sundays[:REPORT_WEEKS]:
-        report = reports[d] = metrics.build_report(d, cfg, summary=summary)
-        public = {**report, "markets": [{k: v for k, v in m.items() if k != "breakdown"} for m in report["markets"]]}
-        public["alerts"] = {t: alerts_for(report, t) for t in ("survival", "monthly")}
-        # bản xem trước theo loại KPI (mọi thị trường)
-        public["cards"] = {t: build_bulletin(report, {"name": "", "kpi_type": t, "markets": []}, dash_url)["card"]
-                           for t in ("survival", "monthly")}
-        sealer.write(f"report-{d}.json", public)
-
-    cutoff = latest - timedelta(days=7 * KEEP_WEEKS)
-    dates = []
-    for f in sorted(DATA_DIR.glob("report-*.json")):
-        d = date.fromisoformat(f.stem[len("report-"):])
-        if d < cutoff:
-            f.unlink()
-        else:
-            dates.append(str(d))
-
-    sealer.write("trend.json", metrics.build_trend(sundays, cfg, summary))
+    today = _now(cfg).date()
+    latest = metrics.last_sunday(today)
+    sealer.write("cube.json", build_cube(today), gz=True)
+    reports = {latest: metrics.build_report(latest, cfg)}
     built_at = _now(cfg).isoformat(timespec="seconds")
     sealer.write("index.json", {
-        "generated_at": built_at, "latest": str(latest), "dates": sorted(dates, reverse=True),
-        "config": {k: v for k, v in cfg.items() if k != "groups"}, "dashboard_url": dash_url,
+        "generated_at": built_at, "latest": str(latest), "today": str(today),
+        "config": {k: v for k, v in cfg.items() if k != "groups"}, "dashboard_url": _dashboard_url(cfg),
     })
+    for old in list(DATA_DIR.glob("report-*.json")) + [DATA_DIR / "trend.json"]:  # định dạng cũ
+        old.unlink(missing_ok=True)
     write_history(sealer)
     _write_json(BUILD_STATE, {"built_at": built_at})
-    log.info("Đã build dashboard: %s tuần, mới nhất %s", len(dates), latest)
+    log.info("Đã build dashboard, kỳ bản tin gần nhất T = %s", latest)
     return reports
 
 
@@ -147,41 +131,191 @@ def write_history(sealer):
     sealer.write("history.json", _read_json(SEND_LOG, [])[-200:][::-1])
 
 
-# ---------------------------------------------------------------- gửi bản tin
+# ---------------------------------------------------------------- soạn bản tin (AI Analyst)
+def _ai_enabled(cfg) -> bool:
+    from .ai_writer import backend
+    return cfg["ai"]["enabled"] and bool(backend())
+
+
+def compose(cfg, report, kpi_type, markets, dash_url, cache) -> dict:
+    """Bản tin cho một phạm vi (loại KPI + thị trường). AI viết thân bài; lỗi thì dùng mẫu theo quy tắc."""
+    key = (report["run_date"], kpi_type, tuple(sorted(markets)))
+    if key in cache:
+        return cache[key]
+    scope = {"kpi_type": kpi_type, "markets": markets}
+    b = build_bulletin(report, scope, dash_url)
+    b["author"], b["ai_error"] = "mẫu", None
+    if b["has_alert"] or cfg["send_when_ok"]:
+        if _ai_enabled(cfg):
+            try:
+                from . import ai_writer
+                ai = ai_writer.write(report, kpi_type, b)
+                b = {**build_bulletin(report, scope, dash_url, ai=ai), "author": "AI", "ai_error": None}
+            except Exception as e:  # không để lỡ lịch vì AI: quay về mẫu, ghi lại lý do
+                log.exception("AI Analyst lỗi, dùng bản tin theo mẫu")
+                b["ai_error"] = str(e)[:300]
+        else:
+            b["ai_error"] = ("Chưa kết nối AI (thiếu secret CLAUDE_CODE_OAUTH_TOKEN hoặc ANTHROPIC_API_KEY)"
+                             if cfg["ai"]["enabled"] else None)
+    cache[key] = b
+    return b
+
+
+# ---------------------------------------------------------------- bản nháp chờ duyệt
+def load_drafts() -> list:
+    path = DATA_DIR / "drafts.json"
+    if not path.exists():
+        return []
+    obj = json.loads(path.read_text(encoding="utf-8"))
+    if isinstance(obj, dict) and obj.get("enc"):
+        from .crypto import open_sealed
+        obj = open_sealed(obj, os.getenv("DASHBOARD_PASSWORD", ""))
+    return obj
+
+
+def save_drafts(drafts: list, sealer):
+    sealer.write("drafts.json", drafts[-60:])
+
+
+def _log(entries):
+    _write_json(SEND_LOG, (_read_json(SEND_LOG, []) + entries)[-1000:])
+
+
+def _entry(cfg, g, run_date, trigger, schedule_id=None, occurrence=None):
+    return {"at": _now(cfg).isoformat(timespec="seconds"), "trigger": trigger, "run_date": str(run_date),
+            "schedule_id": schedule_id, "occurrence": occurrence,
+            "group_id": g["id"], "group": g["name"], "kpi_type": g["kpi_type"]}
+
+
+def _post(bot_box, chat_id, card):
+    bot_box[0] = bot_box[0] or _bot()
+    return bot_box[0].send_card(chat_id, card)
+
+
 def send(cfg, run_date: date, group_ids: list, trigger: str, schedule_id=None, occurrence=None, report=None,
-         live=None) -> list:
-    """live: {chat_id: tên} các nhóm Bot đang ở (None = không biết, cứ gửi)."""
+         live=None, sealer=None) -> list:
+    """Soạn bản tin cho các nhóm; có duyệt thì tạo bản nháp, không thì gửi thẳng.
+
+    live: {chat_id: tên} các nhóm Bot đang ở (None = không biết, cứ gửi).
+    """
     report = report or metrics.build_report(run_date, cfg)
-    bot = None
     dash_url = _dashboard_url(cfg)
-    entries = []
+    review = cfg["review"]["enabled"]
+    bot, cache, entries, pending = [None], {}, [], {}
     for g in cfg["groups"]:
         if g["id"] not in group_ids:
             continue
-        entry = {"at": _now(cfg).isoformat(timespec="seconds"), "trigger": trigger, "run_date": str(run_date),
-                 "schedule_id": schedule_id, "occurrence": occurrence,
-                 "group_id": g["id"], "group": g["name"], "kpi_type": g["kpi_type"]}
+        entry = _entry(cfg, g, run_date, trigger, schedule_id, occurrence)
         try:
-            b = build_bulletin(report, g, dash_url)
-            entry.update(failing=b["failing"], alerts=len(b["alerts"]))
-            if not g.get("enabled", True):
-                entry["status"] = "bỏ qua (nhóm tắt)"
-            elif not b["has_alert"] and not g.get("send_when_ok"):
-                entry["status"] = "bỏ qua (đạt KPI)"
-            elif live is not None and g["chat_id"] not in live:
+            if live is not None and g["chat_id"] not in live:
                 entry["status"] = "bỏ qua (Bot không còn trong nhóm)"  # không thử lại mỗi 30 phút
             else:
-                bot = bot or _bot()
-                entry["message_id"] = bot.send_card(g["chat_id"], b["card"])
-                entry["status"] = "đã gửi"
+                b = compose(cfg, report, g["kpi_type"], g["markets"], dash_url, cache)
+                entry.update(failing=b["failing"], alerts=len(b["alerts"]), author=b["author"])
+                if not b["has_alert"] and not g.get("send_when_ok"):
+                    entry["status"] = "bỏ qua (đạt KPI)"
+                elif review:
+                    pending.setdefault((g["kpi_type"], tuple(sorted(g["markets"]))), []).append((g, entry))
+                    entry["status"] = "chờ duyệt"
+                else:
+                    entry["message_id"] = _post(bot, g["chat_id"], b["card"])
+                    entry["status"] = "đã gửi"
         except Exception as e:  # lỗi một nhóm không chặn các nhóm khác
             log.exception("Gửi nhóm %s lỗi", g["name"])
             entry["status"] = "lỗi"
             entry["error"] = str(e)[:500]
+        entries.append(entry)
+
+    if pending:
+        drafts = load_drafts()
+        for (kpi_type, markets), members in pending.items():
+            b = compose(cfg, report, kpi_type, list(markets), dash_url, cache)
+            draft_id = f"{run_date:%Y%m%d}-{kpi_type}-{_now(cfg):%H%M%S}" + (f"-{'-'.join(markets)}" if markets else "")
+            draft = {"id": draft_id, "run_date": str(run_date), "kpi_type": kpi_type, "markets": list(markets),
+                     "created_at": _now(cfg).isoformat(timespec="seconds"), "trigger": trigger,
+                     "author": b["author"], "ai_error": b["ai_error"], "failing": b["failing"],
+                     "group_ids": [g["id"] for g, _ in members], "targets": [g["name"] for g, _ in members],
+                     "status": "chờ duyệt", "card": b["card"]}
+            drafts.append(draft)
+            for _, entry in members:
+                entry["draft_id"] = draft_id
+            _notify_reviewer(cfg, draft, bot, dash_url)
+        save_drafts(drafts, sealer or _Sealer())
+
+    for e in entries:
+        log.info("%s → %s", e["group"], e["status"])
+    _log(entries)
+    return entries
+
+
+def _notify_reviewer(cfg, draft, bot, dash_url):
+    chat_id = cfg["review"]["chat_id"]
+    if not chat_id:
+        log.info("Bản nháp %s chờ duyệt trên Dashboard (chưa chọn nhóm duyệt)", draft["id"])
+        return
+    try:
+        draft["review_message_id"] = _post(bot, chat_id, draft_card(draft["card"], draft["targets"], draft["id"], dash_url))
+    except Exception as e:
+        log.exception("Không gửi được bản nháp vào nhóm duyệt")
+        draft["review_error"] = str(e)[:300]
+
+
+def _find_draft(drafts, draft_id):
+    d = next((x for x in drafts if x["id"] == draft_id), None)
+    if not d:
+        raise SystemExit(f"Không tìm thấy bản nháp {draft_id}")
+    return d
+
+
+def approve(cfg, draft_id, sealer) -> list:
+    """Gửi bản nháp đã duyệt tới các nhóm (theo danh sách nhóm hiện tại)."""
+    drafts = load_drafts()
+    d = _find_draft(drafts, draft_id)
+    if d["status"] != "chờ duyệt":
+        raise SystemExit(f"Bản nháp {draft_id} đang ở trạng thái '{d['status']}', không gửi lại")
+    live = sync_chats(cfg, sealer)
+    bot, entries = [None], []
+    targets = [g for g in cfg["groups"] if g["kpi_type"] == d["kpi_type"] and sorted(g["markets"]) == sorted(d["markets"])]
+    for g in targets:
+        entry = _entry(cfg, g, d["run_date"], "duyệt bản nháp")
+        entry.update(draft_id=draft_id, failing=d["failing"], author=d["author"])
+        try:
+            if live is not None and g["chat_id"] not in live:
+                entry["status"] = "bỏ qua (Bot không còn trong nhóm)"
+            else:
+                entry["message_id"] = _post(bot, g["chat_id"], d["card"])
+                entry["status"] = "đã gửi"
+        except Exception as e:
+            log.exception("Gửi nhóm %s lỗi", g["name"])
+            entry["status"], entry["error"] = "lỗi", str(e)[:500]
         log.info("%s → %s", g["name"], entry["status"])
         entries.append(entry)
-    _write_json(SEND_LOG, (_read_json(SEND_LOG, []) + entries)[-1000:])
+    d["status"] = "đã gửi" if any(e["status"] == "đã gửi" for e in entries) else "lỗi gửi"
+    d["sent_at"] = _now(cfg).isoformat(timespec="seconds")
+    d["sent_to"] = [e["group"] for e in entries if e["status"] == "đã gửi"]
+    save_drafts(drafts, sealer)
+    _log(entries)
     return entries
+
+
+def redraft(cfg, draft_id, sealer):
+    """Viết lại bản nháp với dữ liệu mới nhất (vd. sau khi chỉnh KPI hoặc muốn AI viết lại)."""
+    drafts = load_drafts()
+    d = _find_draft(drafts, draft_id)
+    report = metrics.build_report(date.fromisoformat(d["run_date"]), cfg)
+    dash_url = _dashboard_url(cfg)
+    b = compose(cfg, report, d["kpi_type"], d["markets"], dash_url, {})
+    d.update(card=b["card"], author=b["author"], ai_error=b["ai_error"], failing=b["failing"],
+             status="chờ duyệt", rewritten_at=_now(cfg).isoformat(timespec="seconds"))
+    _notify_reviewer(cfg, d, [None], dash_url)
+    save_drafts(drafts, sealer)
+
+
+def reject(cfg, draft_id, sealer):
+    drafts = load_drafts()
+    d = _find_draft(drafts, draft_id)
+    d["status"], d["rejected_at"] = "đã hủy", _now(cfg).isoformat(timespec="seconds")
+    save_drafts(drafts, sealer)
 
 
 def _dow_match(spec: str, d: date) -> bool:
@@ -235,7 +369,7 @@ def tick(cfg):
     for s, occ, todo in jobs:
         run_date = metrics.last_sunday(occ.date())
         send(cfg, run_date, todo, trigger=f"lịch: {s['name']}", schedule_id=s["id"],
-             occurrence=occ.isoformat(), report=reports.get(run_date), live=live)
+             occurrence=occ.isoformat(), report=reports.get(run_date), live=live, sealer=sealer)
     if jobs:
         write_history(sealer)
     if not jobs and not stale:
@@ -245,9 +379,10 @@ def tick(cfg):
 def main(argv=None):
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     p = argparse.ArgumentParser(prog="pipeline.run")
-    p.add_argument("cmd", choices=["tick", "build", "send", "test", "chats"])
+    p.add_argument("cmd", choices=["tick", "build", "send", "test", "chats", "approve", "redraft", "reject"])
     p.add_argument("--date", help="Ngày T (YYYY-MM-DD), mặc định Chủ nhật gần nhất")
     p.add_argument("--groups", default="", help="chat_id nhóm (oc_...), cách nhau bởi dấu phẩy; trống = mọi nhóm đã đăng ký")
+    p.add_argument("--draft", default="", help="mã bản nháp (approve / redraft / reject)")
     a = p.parse_args(argv)
     cfg = config_mod.load()
     chat_ids = {x.strip() for x in a.groups.split(",") if x.strip()}
@@ -263,12 +398,25 @@ def main(argv=None):
         sealer = _Sealer()
         live = sync_chats(cfg, sealer)
         run_date = date.fromisoformat(a.date) if a.date else metrics.last_sunday(_now(cfg).date())
-        entries = send(cfg, run_date, group_ids, trigger="gửi thủ công", live=live)
+        entries = send(cfg, run_date, group_ids, trigger="gửi thủ công", live=live, sealer=sealer)
         write_history(sealer)
         if not entries:
             log.warning("Không có nhóm nào đăng ký nhận bản tin trong số đã chọn")
         if any(e["status"] == "lỗi" for e in entries):
             sys.exit(1)
+    elif a.cmd in ("approve", "redraft", "reject"):
+        if not a.draft:
+            raise SystemExit("Thiếu --draft")
+        sealer = _Sealer()
+        if a.cmd == "approve":
+            entries = approve(cfg, a.draft, sealer)
+            write_history(sealer)
+            if any(e["status"] == "lỗi" for e in entries):
+                sys.exit(1)
+        elif a.cmd == "redraft":
+            redraft(cfg, a.draft, sealer)
+        else:
+            reject(cfg, a.draft, sealer)
     elif a.cmd == "test":
         live = sync_chats(cfg) or {}
         bot = _bot()

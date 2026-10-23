@@ -7,7 +7,7 @@ on:
   workflow_dispatch:
     inputs:
       cmd:
-        description: "tick | build | send | test | chats"
+        description: "tick | build | send | test | chats | approve | redraft | reject"
         default: build
         required: true
       date:
@@ -15,6 +15,9 @@ on:
         required: false
       groups:
         description: "chat_id nhóm (oc_...), cách nhau bởi dấu phẩy; trống = mọi nhóm đã đăng ký"
+        required: false
+      draft:
+        description: "Mã bản nháp (approve / redraft / reject)"
         required: false
   push:
     branches: [main]
@@ -50,14 +53,19 @@ jobs:
           LARK_APP_ID: ${{ secrets.LARK_APP_ID }}
           LARK_APP_SECRET: ${{ secrets.LARK_APP_SECRET }}
           DASHBOARD_PASSWORD: ${{ secrets.DASHBOARD_PASSWORD }}
+          # AI Analyst: dùng gói Claude Pro/Max (CLAUDE_CODE_OAUTH_TOKEN từ `claude setup-token`) hoặc API key
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           BQ_PROJECT: hv-data
           CMD: ${{ github.event_name == 'schedule' && 'tick' || github.event_name == 'push' && 'build' || inputs.cmd }}
           IN_DATE: ${{ inputs.date }}
           IN_GROUPS: ${{ inputs.groups }}
+          IN_DRAFT: ${{ inputs.draft }}
         run: |
           ARGS=()
           if [ -n "$IN_DATE" ]; then ARGS+=(--date "$IN_DATE"); fi
           if [ -n "$IN_GROUPS" ]; then ARGS+=(--groups "$IN_GROUPS"); fi
+          if [ -n "$IN_DRAFT" ]; then ARGS+=(--draft "$IN_DRAFT"); fi
           python -m pipeline.run "$CMD" "${ARGS[@]}"
 
       - name: Lưu dữ liệu dashboard & nhật ký gửi

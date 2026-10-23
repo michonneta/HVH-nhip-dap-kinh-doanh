@@ -2,3 +2,5 @@ google-cloud-bigquery==3.27.0
 httpx==0.28.1
 cryptography==43.0.3
 tzdata==2024.2
+anthropic>=0.70
+pydantic>=2.7

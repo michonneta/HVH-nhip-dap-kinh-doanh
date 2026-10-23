@@ -26,6 +26,9 @@
                    "gtc_clean": {"survival": 0.72, "monthly": 0.72}}}
   },
   "send_when_ok": false,
+  "near_pp": 2,
+  "ai": {"enabled": true},
+  "review": {"enabled": true, "chat_id": ""},
   "recipients": [
     {"chat_id": "oc_513fd0e6953e2440e4cdee34ff3a6829", "name": "[HVH] Cập nhật bản tin Sinh tồn",
      "survival": true, "monthly": false, "markets": []},
