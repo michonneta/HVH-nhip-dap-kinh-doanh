@@ -139,8 +139,8 @@
     {
       "chat_id": "oc_85ff565a79dce2b07ffed48087b450b3",
       "name": "[SA] Duyệt bản tin",
-      "survival": true,
-      "monthly": false,
+      "survival": false,
+      "monthly": true,
       "markets": []
     }
   ],
