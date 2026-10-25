@@ -74,5 +74,62 @@
   "author": "mẫu",
   "message_id": "om_x100b62870fb8293cffbc30367d4c2c3",
   "status": "đã gửi"
+ },
+ {
+  "at": "2026-10-25T12:11:20+07:00",
+  "trigger": "lịch: Chủ nhật hàng tuần 08:00",
+  "run_date": "2026-10-25",
+  "schedule_id": "s-weekly",
+  "occurrence": "2026-10-25T08:00:00+07:00",
+  "group_id": "oc_513fd0e6953e2440e4cdee34ff3a6829:survival",
+  "group": "[HVH] Cập nhật bản tin Sinh tồn",
+  "kpi_type": "survival",
+  "failing": [
+   "ML",
+   "TH",
+   "VN"
+  ],
+  "alerts": 5,
+  "author": "mẫu",
+  "status": "chờ duyệt",
+  "draft_id": "20261025-survival-121133"
+ },
+ {
+  "at": "2026-10-25T12:11:31+07:00",
+  "trigger": "lịch: Chủ nhật hàng tuần 08:00",
+  "run_date": "2026-10-25",
+  "schedule_id": "s-weekly",
+  "occurrence": "2026-10-25T08:00:00+07:00",
+  "group_id": "oc_3d4fb5f646a7a9d85b4f3e37813c6eab:monthly",
+  "group": "[HVH] Cập nhật bản tin KPIs",
+  "kpi_type": "monthly",
+  "failing": [
+   "ML",
+   "TH",
+   "VN"
+  ],
+  "alerts": 6,
+  "author": "mẫu",
+  "status": "chờ duyệt",
+  "draft_id": "20261025-monthly-121134"
+ },
+ {
+  "at": "2026-10-25T12:11:32+07:00",
+  "trigger": "lịch: Chủ nhật hàng tuần 08:00",
+  "run_date": "2026-10-25",
+  "schedule_id": "s-weekly",
+  "occurrence": "2026-10-25T08:00:00+07:00",
+  "group_id": "oc_85ff565a79dce2b07ffed48087b450b3:survival",
+  "group": "[SA] Duyệt bản tin",
+  "kpi_type": "survival",
+  "failing": [
+   "ML",
+   "TH",
+   "VN"
+  ],
+  "alerts": 5,
+  "author": "mẫu",
+  "status": "chờ duyệt",
+  "draft_id": "20261025-survival-121135-CAM-ID-ML-PH-TH-VN"
  }
 ]
