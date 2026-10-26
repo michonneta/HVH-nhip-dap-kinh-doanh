@@ -166,6 +166,7 @@ dialog::backdrop { background: rgba(0,0,0,.4); }
 .pick { display: block; width: 100%; text-align: left; font: inherit; color: var(--ink); padding: 8px 10px; border: 0; border-bottom: 1px solid var(--grid); background: transparent; cursor: pointer; }
 .pick:hover { background: var(--grid); }
 @media (max-width: 720px) { .rcp-wrap { grid-template-columns: 1fr; } .grid2 { grid-template-columns: 1fr; } .title { font-size: 17px; } }
+.card a:not(.btn) { color: var(--brand); }
 .hidden { display: none !important; }
 </style>
 </head>
@@ -178,6 +179,7 @@ dialog::backdrop { background: rgba(0,0,0,.4); }
     </div>
     <h1 class="title">BÁO CÁO CHẤT LƯỢNG CHUYỂN ĐỔI</h1>
     <span class="muted upd" id="updated"></span>
+    <span class="row small hidden" id="who"><span class="badge" id="whoRole"></span><b id="whoName"></b><button class="btn link" id="logout">Đăng xuất</button></span>
   </div>
   <div class="stripe"></div>
   <nav class="hidden" id="nav"><div class="navin">
@@ -190,10 +192,22 @@ dialog::backdrop { background: rgba(0,0,0,.4); }
 <main>
   <!-- MẬT KHẨU -->
   <section id="gate" class="card gate hidden">
-    <h2>🔒 Nhập mật khẩu dashboard</h2>
-    <form id="gateForm">
+    <!-- Đăng nhập theo tài khoản (khi đã bật phân quyền) -->
+    <form id="loginForm" class="hidden">
+      <h2>🔒 Đăng nhập</h2>
+      <input type="email" id="loginEmail" autocomplete="username" placeholder="Email" required>
+      <input type="password" id="loginPwd" autocomplete="current-password" placeholder="Mật khẩu" required>
+      <button class="btn primary" type="submit">Đăng nhập</button>
+      <p class="muted small" style="margin:12px 0 0">Tài khoản do Admin cấp. Quên mật khẩu: liên hệ Admin để đặt lại.
+        <a href="#" id="toLegacy" class="muted">Đăng nhập khôi phục</a></p>
+    </form>
+    <!-- Mật khẩu chung (chưa bật phân quyền, hoặc chủ hệ thống khôi phục) -->
+    <form id="gateForm" class="hidden">
+      <h2>🔒 Nhập mật khẩu dashboard</h2>
       <input type="password" id="gatePwd" autocomplete="current-password" placeholder="Mật khẩu" required>
       <button class="btn primary" type="submit">Mở dashboard</button>
+      <p class="muted small hidden" id="legacyNote" style="margin:12px 0 0">Dành cho chủ hệ thống khi không còn Admin nào đăng nhập được: dùng mật khẩu DASHBOARD_PASSWORD, sau đó nhập GitHub token ở Cấu hình để quản lý người dùng.
+        <a href="#" id="toLogin">Quay lại đăng nhập</a></p>
     </form>
     <p class="muted" id="gateMsg" style="margin:8px 0 0;font-size:12px">Dữ liệu được mã hóa; mật khẩu do quản trị cung cấp.</p>
   </section>
@@ -285,9 +299,17 @@ dialog::backdrop { background: rgba(0,0,0,.4); }
         Ngưỡng "gần đạt" (màu cam): thiếu dưới <input type="number" id="nearPP" min="0" max="20" step="0.5" style="width:60px"> điểm % so với KPI.</p>
     </div>
 
+    <div class="card" id="usersCard">
+      <div class="item-head"><h2>Phân quyền người dùng</h2><button class="btn hidden" id="addUser">+ Thêm người dùng</button></div>
+      <p class="muted" style="margin-top:0">Đăng nhập bằng email + mật khẩu. <b>Admin</b>: chỉnh cấu hình, duyệt / viết lại / hủy bản tin, quản lý người dùng.
+        <b>View</b>: chỉ xem Tổng quan và Bản tin.</p>
+      <div id="userForm" class="item hidden"></div>
+      <div id="usersBody"></div>
+    </div>
+
     <details class="card" id="ghConn">
-      <summary style="cursor:pointer"><b>Kết nối GitHub</b> <span class="muted">— nhập một lần trên mỗi máy để lưu được thay đổi</span></summary>
-      <p class="muted">Tạo fine-grained token chỉ cho repo này, quyền <b>Contents: Read and write</b> và <b>Actions: Read and write</b>. Token chỉ lưu trong trình duyệt này.</p>
+      <summary style="cursor:pointer"><b>Kết nối GitHub</b> <span class="muted" id="ghConnSub">— nhập một lần trên mỗi máy để lưu được thay đổi</span></summary>
+      <p class="muted" id="ghConnNote">Tạo fine-grained token chỉ cho repo này, quyền <b>Contents: Read and write</b> và <b>Actions: Read and write</b>. Token chỉ lưu trong trình duyệt này.</p>
       <div class="form-grid">
         <label class="field">Repo (owner/tên)<input id="ghRepo" placeholder="owner/repo"></label>
         <label class="field">Nhánh<input id="ghBranch" value="main"></label>
@@ -369,18 +391,112 @@ async function loadData(name) {
   return JSON.parse(new TextDecoder().decode(pt));
 }
 
+/* ---------- Tài khoản & phân quyền ----------
+ * data/users.json là file công khai nhưng không chứa email hay mật khẩu đọc được:
+ * - users[]: mỗi người một hộp khóa mở bằng mật khẩu của chính họ (PBKDF2 600k + AES-GCM), bên trong là email,
+ *   tên, quyền, khóa xem (kv) và — chỉ Admin — khóa quản trị (ka). Tra cứu theo SHA-256 của email.
+ * - view_vault (mở bằng kv): mật khẩu giải mã dữ liệu Dashboard.
+ * - admin_vault (mở bằng ka): GitHub token dùng chung + danh bạ người dùng.
+ * View không có ka nên không có token: không thể ghi cấu hình hay duyệt bản tin, kể cả khi tự sửa trang. */
+const USERS_FILE = 'docs/data/users.json', AUTH_ITER = 600000, MIN_PWD = 10;
+const auth = { file: null, sha: null, me: null, kv: null, ka: null, kvB64: '', kaB64: '', vault: null };
+const te = new TextEncoder();
+const toB64 = u8 => { let s = ''; u8.forEach(c => s += String.fromCharCode(c)); return btoa(s); };
+const rand = n => crypto.getRandomValues(new Uint8Array(n));
+async function userId(email) {
+  const h = new Uint8Array(await crypto.subtle.digest('SHA-256', te.encode('nhip-dap:' + email.trim().toLowerCase())));
+  return [...h].map(b => b.toString(16).padStart(2, '0')).join('');
+}
+async function pwdKey(pwd, salt, iter) {
+  const base = await crypto.subtle.importKey('raw', te.encode(pwd), 'PBKDF2', false, ['deriveKey']);
+  return crypto.subtle.deriveKey({ name: 'PBKDF2', salt: b64(salt), iterations: iter, hash: 'SHA-256' }, base,
+    { name: 'AES-GCM', length: 256 }, false, ['encrypt', 'decrypt']);
+}
+const rawKey = b => crypto.subtle.importKey('raw', b, 'AES-GCM', false, ['encrypt', 'decrypt']);
+async function sealBox(key, obj) {
+  const iv = rand(12);
+  const ct = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, te.encode(JSON.stringify(obj)));
+  return { iv: toB64(iv), ct: toB64(new Uint8Array(ct)) };
+}
+async function openBox(key, box) {
+  return JSON.parse(new TextDecoder().decode(await crypto.subtle.decrypt({ name: 'AES-GCM', iv: b64(box.iv) }, key, b64(box.ct))));
+}
+const usersOn = () => !!(auth.file && auth.file.users && auth.file.users.length);
+const isAdmin = () => !auth.me || auth.me.role === 'admin';   // chế độ mật khẩu chung: như trước, ghi được khi có token
+const myName = () => auth.me ? (auth.me.name || 'Admin') : 'Admin';
+
+async function fetchUsers(fresh) {
+  if (!fresh) {  // bản trên GitHub Pages
+    const r = await fetch('data/users.json', { cache: 'no-cache' });
+    return r.ok ? { file: await r.json(), sha: null } : { file: null, sha: null };
+  }
+  // bản mới nhất trong repo (người vừa được thêm / đặt lại mật khẩu khi Pages chưa kịp cập nhật)
+  const repo = guessRepo(), branch = store.get('ghBranch') || 'main';
+  const r = await fetch(`https://api.github.com/repos/${repo}/contents/${USERS_FILE}?ref=${encodeURIComponent(branch)}`,
+    { headers: { Accept: 'application/vnd.github+json' }, cache: 'no-store' });
+  if (!r.ok) return { file: null, sha: null };
+  const d = await r.json();
+  return { file: JSON.parse(b64ToUtf8(d.content)), sha: d.sha };
+}
+async function login(email, pwd) {
+  const id = await userId(email);
+  const tryOpen = async e => { try { return await openBox(await pwdKey(pwd, e.salt, e.iter), e); } catch { return null; } };
+  const mine = f => ((f && f.users) || []).find(u => u.id === id);
+  let info = mine(auth.file) ? await tryOpen(mine(auth.file)) : null;
+  if (!info) {
+    const f = await fetchUsers(true).catch(() => ({}));
+    if (mine(f.file)) { info = await tryOpen(mine(f.file)); if (info) { auth.file = f.file; auth.sha = f.sha; } }
+  }
+  if (!info) throw new Error('Sai email hoặc mật khẩu.');
+  await startSession(info);
+}
+async function startSession(info) {  // info: {email, name, role, kv, ka?} — nội dung hộp khóa của người dùng
+  auth.kvB64 = info.kv; auth.kaB64 = info.ka || '';
+  auth.kv = await rawKey(b64(info.kv)); auth.ka = info.ka ? await rawKey(b64(info.ka)) : null;
+  const view = await openBox(auth.kv, auth.file.view_vault);
+  auth.vault = auth.ka ? await openBox(auth.ka, auth.file.admin_vault) : null;
+  auth.me = { email: info.email, name: info.name, role: info.role };
+  store.set('dashPwd', view.dash, sessionStorage); keyCache.clear();
+  store.set('session', JSON.stringify(info), sessionStorage);
+}
+function applyRole() {
+  const legacy = !auth.me;
+  $('#who').classList.remove('hidden');
+  $('#whoRole').textContent = legacy ? 'Mật khẩu chung' : auth.me.role === 'admin' ? 'Admin' : 'View';
+  $('#whoRole').className = 'badge ' + (legacy ? 'na' : auth.me.role === 'admin' ? 'ok' : 'na');
+  $('#whoName').textContent = legacy ? '' : (auth.me.name || auth.me.email);
+  $('nav button[data-tab="cfg"]').classList.toggle('hidden', !isAdmin());
+  if (auth.vault) {  // Admin: dùng token chung đã mã hóa, không lưu token riêng trên máy
+    $('#ghToken').value = auth.vault.gh_token || '';
+    $('#ghConnSub').textContent = '— token dùng chung cho mọi Admin, lưu mã hóa trong danh sách người dùng';
+    $('#ghConnNote').innerHTML = 'Fine-grained token chỉ cho repo này, quyền <b>Contents: Read and write</b> và <b>Actions: Read and write</b>. Đổi token ở đây (vd. khi hết hạn) sẽ áp dụng cho mọi Admin.';
+  }
+}
+$('#logout').onclick = () => { ['dashPwd', 'session', 'legacy'].forEach(k => store.set(k, '', sessionStorage)); location.href = location.pathname; };
+
 /* ---------- Khởi động ---------- */
 async function boot() {
+  if (!auth.me) { try { auth.file = (await fetchUsers(false)).file; } catch { auth.file = null; } }
+  const legacy = !!store.get('legacy', sessionStorage);
+  if (usersOn() && !legacy && !auth.me) {
+    const s = store.get('session', sessionStorage);
+    if (s) { try { await startSession(JSON.parse(s)); } catch { store.set('session', '', sessionStorage); } }
+    if (!auth.me) { showLogin(''); return; }
+  }
   try {
     state.index = await loadData('index.json');
   } catch (e) {
-    if (e.needPwd) { showGate(e.message === 'Sai mật khẩu' ? 'Sai mật khẩu, thử lại.' : ''); return; }
+    if (e.needPwd) {
+      if (auth.me) { showLogin('Không giải mã được dữ liệu — mật khẩu dữ liệu đã đổi? Liên hệ Admin.'); return; }
+      showGate(e.message === 'Sai mật khẩu' ? 'Sai mật khẩu, thử lại.' : ''); return;
+    }
     $('#gate').classList.add('hidden'); $('#tab-ov').classList.remove('hidden');
     $('#kpis').innerHTML = `<div class="card empty">${esc(e.message)}</div>`; return;
   }
   $('#gate').classList.add('hidden'); $('#nav').classList.remove('hidden'); $('#tab-ov').classList.remove('hidden');
   $('#updated').textContent = 'Dữ liệu cập nhật ' + new Date(state.index.generated_at).toLocaleString('vi-VN');
   initGithub();
+  applyRole();
   state.cfg = JSON.parse(JSON.stringify(state.index.config));
   try { state.chats = await loadData('lark_chats.json'); } catch { state.chats = null; }
   const qs = new URLSearchParams(location.search);
@@ -392,17 +508,37 @@ async function boot() {
   if (qs.get('tab')) { state.selDraft = qs.get('draft'); const b = $(`nav button[data-tab="${qs.get('tab')}"]`); if (b) b.click(); }
 }
 function showGate(msg) {
-  $('#gate').classList.remove('hidden');
-  if (msg) $('#gateMsg').textContent = msg;
+  $('#gate').classList.remove('hidden'); $('#loginForm').classList.add('hidden'); $('#gateForm').classList.remove('hidden');
+  $('#legacyNote').classList.toggle('hidden', !usersOn());
+  $('#gateMsg').textContent = msg || (usersOn() ? '' : 'Dữ liệu được mã hóa; mật khẩu do quản trị cung cấp.');
   $('#gatePwd').focus();
 }
-$('#gateForm').onsubmit = e => { e.preventDefault(); store.set('dashPwd', $('#gatePwd').value, sessionStorage); keyCache.clear(); boot(); };
+function showLogin(msg) {
+  $('#gate').classList.remove('hidden'); $('#gateForm').classList.add('hidden'); $('#loginForm').classList.remove('hidden');
+  $('#gateMsg').textContent = msg || '';
+  $('#loginEmail').focus();
+}
+$('#gateForm').onsubmit = e => {
+  e.preventDefault();
+  if (usersOn()) store.set('legacy', '1', sessionStorage);
+  store.set('dashPwd', $('#gatePwd').value, sessionStorage); keyCache.clear(); boot();
+};
+$('#loginForm').onsubmit = async e => {
+  e.preventDefault();
+  const btn = $('#loginForm button'); btn.disabled = true; $('#gateMsg').textContent = 'Đang đăng nhập…';
+  try { await login($('#loginEmail').value, $('#loginPwd').value); $('#loginPwd').value = ''; await boot(); }
+  catch (err) { $('#gateMsg').textContent = err.message; }
+  finally { btn.disabled = false; }
+};
+$('#toLegacy').onclick = e => { e.preventDefault(); showGate(''); };
+$('#toLogin').onclick = e => { e.preventDefault(); store.set('legacy', '', sessionStorage); showLogin(''); };
 
 /* ---------- Tabs ---------- */
 $$('nav button').forEach(b => b.onclick = () => {
+  if (b.dataset.tab === 'cfg' && !isAdmin()) return;  // View: không vào Cấu hình (kể cả qua đường link ?tab=cfg)
   $$('nav button').forEach(x => x.classList.toggle('on', x === b));
   ['ov', 'bantin', 'cfg'].forEach(t => $('#tab-' + t).classList.toggle('hidden', t !== b.dataset.tab));
-  if (b.dataset.tab === 'cfg') { renderConfig(); loadHistory(); }
+  if (b.dataset.tab === 'cfg') { renderConfig(); loadHistory(); loadUsers(); }
   if (b.dataset.tab === 'bantin') loadDrafts();
 });
 
@@ -785,15 +921,26 @@ function initOverview(qs) {
 }
 
 /* ---------- GitHub API ---------- */
+function guessRepo() {
+  const repo = store.get('ghRepo'), m = location.hostname.match(/^([^.]+)\.github\.io$/);
+  if (repo || !m) return repo;
+  const seg = location.pathname.split('/').filter(Boolean)[0];
+  return m[1] + '/' + (seg || m[1] + '.github.io');
+}
 function initGithub() {
-  let repo = store.get('ghRepo');
-  const m = location.hostname.match(/^([^.]+)\.github\.io$/);
-  if (!repo && m) { const seg = location.pathname.split('/').filter(Boolean)[0]; repo = m[1] + '/' + (seg || m[1] + '.github.io'); }
-  $('#ghRepo').value = repo; $('#ghBranch').value = store.get('ghBranch') || 'main'; $('#ghToken').value = store.get('ghToken');
+  $('#ghRepo').value = guessRepo(); $('#ghBranch').value = store.get('ghBranch') || 'main'; $('#ghToken').value = store.get('ghToken');
   updateActionsLink();
 }
 function updateActionsLink() { $('#actionsLink').href = `https://github.com/${$('#ghRepo').value}/actions/workflows/${WORKFLOW}`; }
-['ghRepo', 'ghBranch', 'ghToken'].forEach(id => $('#' + id).onchange = e => { store.set(id, e.target.value.trim()); updateActionsLink(); });
+['ghRepo', 'ghBranch'].forEach(id => $('#' + id).onchange = e => { store.set(id, e.target.value.trim()); updateActionsLink(); });
+$('#ghToken').onchange = async e => {
+  const v = e.target.value.trim();
+  if (!auth.vault) { store.set('ghToken', v); renderUsers(); return; }
+  // Đã bật phân quyền: token dùng chung, lưu mã hóa trong danh sách người dùng
+  const old = auth.vault.gh_token;
+  try { await usersTxn(() => { auth.vault.gh_token = v; }, 'users: đổi GitHub token dùng chung'); toast('✓ Đã đổi token dùng chung cho mọi Admin.'); }
+  catch (err) { e.target.value = old; toast('Lỗi đổi token: ' + err.message, 7000); }
+};
 async function gh(path, opts = {}) {
   const token = $('#ghToken').value.trim(), repo = $('#ghRepo').value.trim();
   if (!repo) throw new Error('Chưa nhập repo (owner/tên)');
@@ -843,7 +990,7 @@ async function saveConfig() {
   } catch (e) { setSaveState('✕ Lỗi lưu: ' + e.message, true); }
   finally { save.busy = false; if (save.dirty) saveConfig(); }
 }
-$('#tab-cfg').addEventListener('change', e => { if (!e.target.closest('#ghConn')) scheduleSave(); });
+$('#tab-cfg').addEventListener('change', e => { if (!e.target.closest('#ghConn, #usersCard')) scheduleSave(); });
 $('#reviewEnabled').addEventListener('change', e => { $('#reviewChat').disabled = !e.target.checked; });
 
 $('#rebuild').onclick = e => withBtn(e.target, async () => { await dispatch('build'); toast('Đang làm mới dữ liệu — tải lại trang sau vài phút.'); });
@@ -1073,8 +1220,10 @@ function renderDrafts() {
       <span class="muted" style="font-size:12px">Mã: ${esc(d.id)}</span>
     </div>
     ${d.ai_error ? `<p class="muted" style="font-size:12px;color:var(--critical)">⚠ AI chưa viết được bản tin này (${esc(d.ai_error)}) — đang dùng mẫu theo quy tắc.</p>` : ''}
-    ${d.status === 'đã gửi' ? `<p class="muted" style="font-size:12px">Đã gửi ${esc(String(d.sent_at || '').replace('T', ' ').slice(0, 16))} tới: ${esc((d.sent_to || []).join(', '))}</p>` : ''}
-    ${d.status === 'chờ duyệt' ? `<div class="row" style="margin-bottom:12px">
+    ${d.status === 'đã gửi' ? `<p class="muted" style="font-size:12px">Đã gửi ${esc(String(d.sent_at || '').replace('T', ' ').slice(0, 16))} tới: ${esc((d.sent_to || []).join(', '))}${d.approved_by ? ' · duyệt bởi ' + esc(d.approved_by) : ''}</p>` : ''}
+    ${d.status === 'đã hủy' && d.rejected_by ? `<p class="muted" style="font-size:12px">Hủy bởi ${esc(d.rejected_by)}</p>` : ''}
+    ${d.status === 'chờ duyệt' && !isAdmin() ? '<p class="muted" style="font-size:12px">Bản tin đang chờ Admin duyệt.</p>' : ''}
+    ${d.status === 'chờ duyệt' && isAdmin() ? `<div class="row" style="margin-bottom:12px">
       <button class="btn primary" data-dact="approve">✅ Duyệt gửi tới ${d.targets.length} nhóm</button>
       <button class="btn" data-dact="redraft">✍️ Viết lại</button>
       <button class="btn danger" data-dact="reject">Hủy bản tin</button></div>` : ''}
@@ -1083,14 +1232,204 @@ function renderDrafts() {
 }
 $('#draftList').onclick = e => { const b = e.target.closest('[data-draft]'); if (b) { state.selDraft = b.dataset.draft; renderDrafts(); } };
 $('#draftView').onclick = e => {
-  const act = e.target.dataset.dact; if (!act) return;
+  const act = e.target.dataset.dact; if (!act || !isAdmin()) return;
   const d = (state.drafts || []).find(x => x.id === state.selDraft); if (!d) return;
   const ask = { approve: `Gửi bản tin này tới: ${d.targets.join(', ')}?`, redraft: 'Yêu cầu AI viết lại bản tin này với dữ liệu mới nhất?', reject: 'Hủy bản tin này (không gửi)?' }[act];
   if (!confirm(ask)) return;
   withBtn(e.target, async () => {
-    await dispatch(act, { draft: d.id });
+    await dispatch(act, { draft: d.id, by: myName() });
     toast({ approve: 'Đã duyệt — bản tin sẽ đến các nhóm trong 1–2 phút.', redraft: 'AI đang viết lại — tải lại trang sau 2–3 phút.', reject: 'Đã yêu cầu hủy bản tin.' }[act], 6000);
   });
+};
+
+/* ---------- Phân quyền người dùng (Admin) ---------- */
+const ROLE_LABEL = { admin: 'Admin', view: 'View' };
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+function tempPassword() {
+  const abc = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789';
+  return [...rand(12)].map(x => abc[x % abc.length]).join('');
+}
+async function saveUsers(msg) {  // ghi docs/data/users.json qua GitHub API (commit message không chứa email)
+  const branch = $('#ghBranch').value.trim() || 'main';
+  auth.file.admin_vault = await sealBox(auth.ka, auth.vault);
+  const body = JSON.stringify({ message: msg, branch, ...(auth.sha ? { sha: auth.sha } : {}),
+    content: utf8ToB64(JSON.stringify(auth.file, null, 1) + '\n') });
+  try { auth.sha = (await gh('/contents/' + USERS_FILE, { method: 'PUT', body })).content.sha; }
+  catch (e) {
+    if (/409|422/.test(e.message)) throw new Error('danh sách vừa được thay đổi ở nơi khác — tải lại trang rồi thử lại');
+    throw e;
+  }
+}
+async function usersTxn(mutate, msg) {  // sửa danh sách rồi ghi; ghi lỗi thì trả lại trạng thái cũ
+  if (auth.busy) throw new Error('đang lưu thay đổi trước, đợi vài giây rồi thử lại');
+  const snap = JSON.stringify({ file: auth.file, vault: auth.vault });
+  auth.busy = true;
+  try { const r = await mutate(); await saveUsers(msg); return r; }
+  catch (e) { const s = JSON.parse(snap); auth.file = s.file; auth.vault = s.vault; throw e; }
+  finally { auth.busy = false; }
+}
+async function loadUsers() {  // Admin mở Cấu hình: lấy bản mới nhất trong repo (kèm sha để ghi)
+  if (auth.vault && hasToken()) {
+    try {
+      const d = await gh(`/contents/${USERS_FILE}?ref=${encodeURIComponent($('#ghBranch').value.trim() || 'main')}`);
+      auth.file = JSON.parse(b64ToUtf8(d.content)); auth.sha = d.sha;
+      auth.vault = await openBox(auth.ka, auth.file.admin_vault);
+    } catch (e) { toast('Không tải được danh sách người dùng mới nhất: ' + e.message, 6000); }
+  }
+  renderUsers();
+}
+async function upsertUser(u, pwd) {  // u: {email, name, role}; tạo hộp khóa mới mở bằng pwd
+  const id = await userId(u.email), salt = toB64(rand(16));
+  const info = { email: u.email.trim().toLowerCase(), name: u.name.trim(), role: u.role, kv: auth.kvB64, ...(u.role === 'admin' ? { ka: auth.kaB64 } : {}) };
+  const entry = { id, salt, iter: AUTH_ITER, ...(await sealBox(await pwdKey(pwd, salt, AUTH_ITER), info)) };
+  auth.file.users = auth.file.users.filter(x => x.id !== id).concat(entry);
+  const meta = { id, email: info.email, name: info.name, role: u.role, updated_at: new Date().toISOString(), by: myName() };
+  auth.vault.dir = (auth.vault.dir || []).filter(x => x.id !== id).concat(meta);
+  return info;
+}
+const adminCount = () => (auth.vault.dir || []).filter(x => x.role === 'admin').length;
+
+function renderUsers() {
+  const body = $('#usersBody'), on = usersOn() && auth.vault;
+  $('#addUser').classList.toggle('hidden', !on);
+  if (!on) {  // chưa bật phân quyền, hoặc chủ hệ thống đăng nhập khôi phục bằng mật khẩu chung
+    body.innerHTML = `<div class="item">
+      <b>${usersOn() ? '⚠ Đang đăng nhập khôi phục bằng mật khẩu chung' : 'Chưa bật phân quyền — mọi người đang dùng chung mật khẩu Dashboard.'}</b>
+      <p class="muted small" style="margin:4px 0 8px">${usersOn()
+        ? 'Tạo lại phân quyền từ đầu: <b>toàn bộ tài khoản cũ sẽ bị xóa</b>, bạn trở thành Admin duy nhất rồi cấp lại tài khoản cho mọi người.'
+        : 'Tạo tài khoản Admin đầu tiên (chính bạn). Sau đó mọi người đăng nhập bằng email + mật khẩu do Admin cấp; GitHub token đang nhập trên máy này trở thành token dùng chung cho mọi Admin.'}</p>
+      ${hasToken() ? `<button class="btn primary" data-uact="bootstrap">${usersOn() ? 'Tạo lại phân quyền' : 'Bật phân quyền'}</button>`
+        : '<span class="muted small">Cần nhập GitHub token ở mục <b>Kết nối GitHub</b> bên dưới trước.</span>'}</div>`;
+    return;
+  }
+  const dir = (auth.vault.dir || []).slice().sort((a, b) => (a.role === b.role ? a.name.localeCompare(b.name) : a.role === 'admin' ? -1 : 1));
+  body.innerHTML = `<div class="tbl-wrap"><table><tr><th>Tên</th><th style="text-align:left">Email</th><th style="text-align:left">Quyền</th><th style="text-align:left">Cập nhật</th><th></th></tr>
+    ${dir.map(u => `<tr><td>${esc(u.name)}${u.email === auth.me.email ? ' <span class="muted">(bạn)</span>' : ''}</td>
+      <td style="text-align:left">${esc(u.email)}</td>
+      <td style="text-align:left"><span class="badge ${u.role === 'admin' ? 'ok' : 'na'}">${ROLE_LABEL[u.role]}</span></td>
+      <td style="text-align:left" class="muted">${esc(String(u.updated_at).slice(0, 10))} · ${esc(u.by || '')}</td>
+      <td><button class="btn link" data-uact="edit" data-id="${u.id}">Đổi quyền / mật khẩu</button>
+        <button class="btn link danger" data-uact="del" data-id="${u.id}">Xóa</button></td></tr>`).join('')}
+    </table></div>
+    <p class="muted small" style="margin:8px 0 0">Email chỉ hiển thị cho Admin; file danh sách người dùng trên GitHub chỉ chứa dữ liệu đã mã hóa.
+      <a href="#" data-uact="self">Đổi mật khẩu của tôi</a> · <a href="#" data-uact="dash">Đổi mật khẩu dữ liệu (DASHBOARD_PASSWORD)</a></p>`;
+}
+
+function openDashForm() {  // mật khẩu chung cũ đã phát cho nhiều người: đổi để chỉ tài khoản mới mở được dữ liệu
+  const f = $('#userForm');
+  f.innerHTML = `<b>Đổi mật khẩu dữ liệu</b>
+    <ol class="muted small" style="margin:6px 0 8px;padding-left:18px">
+      <li>Trên GitHub: <b>Settings → Secrets and variables → Actions → DASHBOARD_PASSWORD → Update</b>, nhập mật khẩu mới.</li>
+      <li>Nhập đúng mật khẩu đó vào đây rồi bấm Lưu: hệ thống cập nhật cho mọi tài khoản và làm mới dữ liệu (1–2 phút).</li></ol>
+    <div class="form-grid">
+      <label class="field">Mật khẩu dữ liệu mới<input id="dashNew" type="password" autocomplete="new-password"></label>
+      <label class="field">Nhập lại<input id="dashNew2" type="password" autocomplete="new-password"></label>
+    </div>
+    <p class="muted small">Sau khi đổi, mật khẩu chung cũ hết tác dụng; "Đăng nhập khôi phục" chỉ dùng được với mật khẩu mới.</p>
+    <div class="row"><button class="btn primary" data-uact="dashSave">Lưu</button><button class="btn" data-uact="cancel">Hủy</button></div>`;
+  f.classList.remove('hidden'); f.scrollIntoView({ block: 'nearest' });
+}
+async function saveDashPassword() {
+  const v = $('#dashNew').value;
+  if (v.length < 12) throw new Error('Mật khẩu dữ liệu cần tối thiểu 12 ký tự');
+  if (v !== $('#dashNew2').value) throw new Error('Hai lần nhập không khớp');
+  await usersTxn(async () => { auth.file.view_vault = await sealBox(auth.kv, { dash: v }); }, 'users: đổi mật khẩu dữ liệu');
+  await dispatch('build');
+  return 'Đã cập nhật. Dữ liệu được mã hóa lại trong 1–2 phút; sau đó mọi người đăng nhập lại là xem được.';
+}
+
+function openUserForm(mode, u = {}) {  // mode: add | edit | self | bootstrap
+  const f = $('#userForm'), fixedEmail = mode === 'edit' || mode === 'self';
+  const typed = mode === 'self' || mode === 'bootstrap';  // tự đặt mật khẩu cho chính mình: nhập 2 lần, ẩn ký tự
+  const title = { add: 'Thêm người dùng', edit: 'Đổi quyền / đặt lại mật khẩu', self: 'Đổi mật khẩu của tôi', bootstrap: 'Tài khoản Admin đầu tiên' }[mode];
+  f.innerHTML = `<b>${title}</b>
+    <div class="form-grid" style="margin-top:8px">
+      <label class="field">Email<input id="ufEmail" type="email" value="${esc(u.email || '')}" ${fixedEmail ? 'readonly' : ''}></label>
+      <label class="field">Tên hiển thị<input id="ufName" value="${esc(u.name || '')}" placeholder="vd. Hùng DVKH"></label>
+      ${mode === 'add' || mode === 'edit' ? `<label class="field">Quyền<select id="ufRole">
+        <option value="view" ${u.role !== 'admin' ? 'selected' : ''}>View — chỉ xem</option>
+        <option value="admin" ${u.role === 'admin' ? 'selected' : ''}>Admin — cấu hình, duyệt bản tin</option></select></label>` : ''}
+      <label class="field">${typed ? 'Mật khẩu mới' : 'Mật khẩu tạm'}
+        <span class="row" style="flex-wrap:nowrap"><input id="ufPwd" type="${typed ? 'password' : 'text'}" autocomplete="new-password" value="${typed ? '' : tempPassword()}">
+        ${typed ? '' : '<button class="btn" type="button" data-uact="gen">Tạo mới</button>'}</span></label>
+      ${typed ? '<label class="field">Nhập lại mật khẩu<input id="ufPwd2" type="password" autocomplete="new-password"></label>' : ''}
+    </div>
+    <p class="muted small">${typed ? `Tối thiểu ${MIN_PWD} ký tự.`
+      : `Tối thiểu ${MIN_PWD} ký tự. <b>Sao chép mật khẩu này gửi riêng cho người dùng</b> (vd. tin nhắn Lark riêng) trước khi bấm Lưu — sau khi lưu không xem lại được.`}
+      ${mode === 'edit' ? ' Đổi quyền cũng cần cấp mật khẩu mới vì dữ liệu được mã hóa bằng mật khẩu của từng người.' : ''}</p>
+    <div class="row"><button class="btn primary" data-uact="save" data-mode="${mode}">Lưu</button><button class="btn" data-uact="cancel">Hủy</button></div>`;
+  f.classList.remove('hidden'); f.scrollIntoView({ block: 'nearest' });
+}
+
+async function submitUserForm(mode) {
+  const email = $('#ufEmail').value.trim().toLowerCase(), name = $('#ufName').value.trim(), pwd = $('#ufPwd').value;
+  const role = mode === 'bootstrap' ? 'admin' : mode === 'self' ? auth.me.role : $('#ufRole').value;
+  if (!EMAIL_RE.test(email)) throw new Error('Email không hợp lệ');
+  if (!name) throw new Error('Nhập tên hiển thị');
+  if (pwd.length < MIN_PWD) throw new Error(`Mật khẩu cần tối thiểu ${MIN_PWD} ký tự`);
+  if ($('#ufPwd2') && $('#ufPwd2').value !== pwd) throw new Error('Hai lần nhập mật khẩu không khớp');
+  if (mode === 'bootstrap') {  // tạo khóa mới; mật khẩu dữ liệu = mật khẩu chung đang dùng, token = token đang nhập
+    const prev = { ...auth }, kv = rand(32), ka = rand(32);
+    try {
+      Object.assign(auth, { kvB64: toB64(kv), kaB64: toB64(ka), kv: await rawKey(kv), ka: await rawKey(ka), me: { email, name, role } });
+      auth.vault = { gh_token: $('#ghToken').value.trim(), dir: [] };
+      if (!auth.sha) { try { auth.sha = (await gh(`/contents/${USERS_FILE}?ref=${encodeURIComponent($('#ghBranch').value.trim() || 'main')}`)).sha; } catch {} }
+      auth.file = { v: 1, kdf: 'pbkdf2-sha256', users: [], admin_vault: null,
+                    view_vault: await sealBox(auth.kv, { dash: store.get('dashPwd', sessionStorage) }) };
+      const info = await upsertUser({ email, name, role }, pwd);
+      await saveUsers('users: bật phân quyền');
+      store.set('session', JSON.stringify(info), sessionStorage);
+    } catch (e) { Object.assign(auth, prev); throw e; }
+    store.set('legacy', '', sessionStorage); store.set('ghToken', '');
+    applyRole(); return 'Đã bật phân quyền. Từ giờ mọi người đăng nhập bằng email + mật khẩu (trang công khai cập nhật sau 1–2 phút).';
+  }
+  const id = await userId(email), exists = (auth.vault.dir || []).find(x => x.id === id);
+  if (mode === 'add' && exists) throw new Error('Email này đã có tài khoản — dùng "Đổi quyền / mật khẩu"');
+  if (exists && exists.role === 'admin' && role !== 'admin' && adminCount() <= 1) throw new Error('Cần giữ ít nhất một Admin');
+  const info = await usersTxn(() => upsertUser({ email, name, role }, pwd), 'users: cập nhật phân quyền');
+  if (email === auth.me.email) {  // sửa chính mình: cập nhật phiên đăng nhập
+    auth.me = { email, name, role }; store.set('session', JSON.stringify(info), sessionStorage);
+    if (role !== 'admin') { location.reload(); return ''; }
+    applyRole();
+  }
+  return { add: 'Đã thêm người dùng.', edit: 'Đã cập nhật quyền / mật khẩu.', self: 'Đã đổi mật khẩu.' }[mode];
+}
+
+$('#addUser').onclick = () => openUserForm('add');
+$('#usersCard').onclick = async e => {
+  const t = e.target.closest('[data-uact]'); if (!t) return;
+  const act = t.dataset.uact; e.preventDefault();
+  const u = (auth.vault && auth.vault.dir || []).find(x => x.id === t.dataset.id);
+  if (act === 'gen') { $('#ufPwd').value = tempPassword(); return; }
+  if (act === 'cancel') { $('#userForm').classList.add('hidden'); return; }
+  if (act === 'bootstrap') {
+    if (usersOn() && !confirm('Xóa toàn bộ tài khoản hiện có và tạo lại phân quyền với bạn là Admin duy nhất?')) return;
+    openUserForm('bootstrap'); return;
+  }
+  if (act === 'edit') { openUserForm('edit', u); return; }
+  if (act === 'dash') { openDashForm(); return; }
+  if (act === 'dashSave') {
+    return withBtn(t, async () => { const msg = await saveDashPassword(); $('#userForm').classList.add('hidden'); toast(msg, 8000); });
+  }
+  if (act === 'self') { openUserForm('self', auth.vault.dir.find(x => x.email === auth.me.email) || auth.me); return; }
+  if (act === 'del') {
+    if (u.role === 'admin' && adminCount() <= 1) { toast('Cần giữ ít nhất một Admin.'); return; }
+    if (!confirm(`Xóa tài khoản ${u.email}? Người này sẽ không đăng nhập được nữa.`)) return;
+    return withBtn(t, async () => {
+      await usersTxn(() => {
+        auth.file.users = auth.file.users.filter(x => x.id !== u.id);
+        auth.vault.dir = auth.vault.dir.filter(x => x.id !== u.id);
+      }, 'users: xóa người dùng');
+      if (u.email === auth.me.email) { $('#logout').click(); return; }
+      renderUsers(); toast('Đã xóa tài khoản.');
+    });
+  }
+  if (act === 'save') {
+    return withBtn(t, async () => {
+      const msg = await submitUserForm(t.dataset.mode);
+      $('#userForm').classList.add('hidden'); renderUsers(); if (msg) toast(msg, 6000);
+    });
+  }
 };
 
 /* ---------- Lịch sử ---------- */

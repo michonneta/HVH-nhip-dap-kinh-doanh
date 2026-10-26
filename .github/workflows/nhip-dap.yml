@@ -19,10 +19,13 @@ on:
       draft:
         description: "Mã bản nháp (approve / redraft / reject)"
         required: false
+      by:
+        description: "Tên Admin thực hiện (approve / redraft / reject)"
+        required: false
   push:
     branches: [main]
-    # sửa cấu hình hoặc giao diện xong thì build lại dữ liệu và triển khai Dashboard
-    paths: ["config/config.json", "docs/**", "!docs/data/**"]
+    # sửa cấu hình, giao diện hoặc danh sách người dùng xong thì build lại dữ liệu và triển khai Dashboard
+    paths: ["config/config.json", "docs/**", "!docs/data/**", "docs/data/users.json"]
 
 permissions:
   contents: write
@@ -66,11 +69,13 @@ jobs:
           IN_DATE: ${{ inputs.date }}
           IN_GROUPS: ${{ inputs.groups }}
           IN_DRAFT: ${{ inputs.draft }}
+          IN_BY: ${{ inputs.by }}
         run: |
           ARGS=()
           if [ -n "$IN_DATE" ]; then ARGS+=(--date "$IN_DATE"); fi
           if [ -n "$IN_GROUPS" ]; then ARGS+=(--groups "$IN_GROUPS"); fi
           if [ -n "$IN_DRAFT" ]; then ARGS+=(--draft "$IN_DRAFT"); fi
+          if [ -n "$IN_BY" ]; then ARGS+=(--by "$IN_BY"); fi
           python -m pipeline.run "$CMD" "${ARGS[@]}"
 
       - name: Lưu dữ liệu dashboard & nhật ký gửi

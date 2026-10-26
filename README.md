@@ -62,7 +62,7 @@ tạo khóa JSON → lưu nguyên nội dung vào secret `GCP_SA_KEY`.
 | `GCP_SA_KEY` | Nội dung file khóa JSON của service account |
 | `LARK_APP_ID` | App ID (`cli_…`) |
 | `LARK_APP_SECRET` | App Secret (mục Credentials & Basic Info) |
-| `DASHBOARD_PASSWORD` | Mật khẩu mở dashboard (gửi cho người được xem) |
+| `DASHBOARD_PASSWORD` | Mật khẩu mã hóa dữ liệu Dashboard. Đã bật phân quyền thì không cần phát cho ai (xem *Phân quyền người dùng*) |
 | `CLAUDE_CODE_OAUTH_TOKEN` | **Dùng gói Claude Pro/Max** cho AI Analyst: trên máy chạy `claude setup-token`, đăng nhập, dán token nhận được (`sk-ant-oat…`) |
 | `ANTHROPIC_API_KEY` | *(Thay thế)* API key trả phí theo lượng dùng tại platform.claude.com. Có cả hai thì dùng API key |
 
@@ -96,7 +96,28 @@ Nhóm đổi tên trong Lark thì tên trên dashboard và bản tin tự cập 
   (~400 ngày gần nhất), nén + mã hóa thành `docs/data/cube.json`; trình duyệt tự lọc và tính (vài chục ms).
   Kỳ tuần dùng đúng quy tắc cửa sổ của bản tin nên số trên Dashboard khớp bản tin.
 - **Tab Bản tin**: menu lịch sử bản tin bên trái, bản tin mới nhất hiển thị chính; duyệt / viết lại / hủy bản nháp.
-- **Tab Cấu hình**: nhóm nhận bản tin, AI Analyst & duyệt, lịch gửi, KPI, kết nối GitHub, nhật ký gửi.
+- **Tab Cấu hình** (chỉ Admin): nhóm nhận bản tin, AI Analyst & duyệt, lịch gửi, KPI, phân quyền người dùng,
+  kết nối GitHub, nhật ký gửi.
+
+## Phân quyền người dùng
+- **Admin**: chỉnh cấu hình, duyệt / viết lại / hủy bản tin, quản lý người dùng. **View**: chỉ xem Tổng quan và Bản tin
+  (không thấy tab Cấu hình, không có nút duyệt).
+- **Bật lần đầu**: mở Dashboard bằng mật khẩu chung → tab Cấu hình → nhập GitHub token ở *Kết nối GitHub* →
+  *Phân quyền người dùng* → **Bật phân quyền**, tạo tài khoản Admin của chính mình. Từ đó mọi người đăng nhập bằng
+  email + mật khẩu; token trở thành token dùng chung cho mọi Admin (không cần nhập trên từng máy).
+- **Thêm người dùng**: **+ Thêm người dùng** → email, tên, quyền, mật khẩu tạm (≥ 10 ký tự). Gửi mật khẩu tạm riêng cho
+  người đó. Đổi quyền hoặc quên mật khẩu: **Đổi quyền / mật khẩu** (cấp mật khẩu mới). Mỗi người tự đổi được mật khẩu khi là Admin;
+  View nhờ Admin đặt lại.
+- **Cơ chế**: `docs/data/users.json` công khai nhưng chỉ chứa dữ liệu đã mã hóa — mỗi tài khoản là một hộp khóa mở bằng
+  mật khẩu của chính người đó (PBKDF2 600.000 vòng + AES-256-GCM), tra cứu theo mã băm email. Hộp khóa của View chỉ mở được
+  mật khẩu dữ liệu; hộp khóa của Admin mở thêm GitHub token. Vì vậy View không thể ghi gì kể cả khi tự sửa trang.
+  Tên Admin bấm duyệt / hủy được ghi vào bản tin ("duyệt bởi …").
+- **Sau khi bật**: mật khẩu chung cũ vẫn mở được dữ liệu ("Đăng nhập khôi phục"). Đổi nó: cập nhật Secret
+  `DASHBOARD_PASSWORD` trên GitHub, rồi Cấu hình → *Phân quyền người dùng* → **Đổi mật khẩu dữ liệu**, nhập đúng mật khẩu mới.
+- **Khôi phục**: nếu không còn Admin nào đăng nhập được, chủ repo dùng "Đăng nhập khôi phục" (DASHBOARD_PASSWORD) + GitHub
+  token → **Tạo lại phân quyền** (xóa toàn bộ tài khoản cũ, cấp lại từ đầu).
+- **Xóa tài khoản** chặn đăng nhập ngay. Người am hiểu kỹ thuật có thể đã lưu lại khóa khi còn quyền; muốn thu hồi tuyệt đối
+  thì đổi mật khẩu dữ liệu, đổi GitHub token, rồi Tạo lại phân quyền.
 
 ## Bản tin: AI viết → duyệt → gửi
 - **Kết nối AI**: với gói Claude Pro/Max, workflow chạy Claude Code CLI không tương tác (`claude -p --json-schema …`)

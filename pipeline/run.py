@@ -282,12 +282,13 @@ def _find_draft(drafts, draft_id):
     return d
 
 
-def approve(cfg, draft_id, sealer) -> list:
-    """Gửi bản nháp đã duyệt tới các nhóm (theo danh sách nhóm hiện tại)."""
+def approve(cfg, draft_id, sealer, by="") -> list:
+    """Gửi bản nháp đã duyệt tới các nhóm (theo danh sách nhóm hiện tại). by: tên Admin bấm duyệt."""
     drafts = load_drafts()
     d = _find_draft(drafts, draft_id)
     if d["status"] != "chờ duyệt":
         raise SystemExit(f"Bản nháp {draft_id} đang ở trạng thái '{d['status']}', không gửi lại")
+    d["approved_by"] = by or None
     live = sync_chats(cfg, sealer)
     bot, entries = [None], []
     targets = [g for g in cfg["groups"] if g["kpi_type"] == d["kpi_type"] and sorted(g["markets"]) == sorted(d["markets"])]
@@ -313,7 +314,7 @@ def approve(cfg, draft_id, sealer) -> list:
     return entries
 
 
-def redraft(cfg, draft_id, sealer):
+def redraft(cfg, draft_id, sealer, by=""):
     """Viết lại bản nháp với dữ liệu mới nhất (vd. sau khi chỉnh KPI hoặc muốn AI viết lại)."""
     drafts = load_drafts()
     d = _find_draft(drafts, draft_id)
@@ -321,15 +322,16 @@ def redraft(cfg, draft_id, sealer):
     dash_url = _dashboard_url(cfg)
     b = compose(cfg, report, d["kpi_type"], d["markets"], dash_url, {})
     d.update(card=b["card"], author=b["author"], ai_error=b["ai_error"], failing=b["failing"],
-             status="chờ duyệt", rewritten_at=_now(cfg).isoformat(timespec="seconds"))
+             status="chờ duyệt", rewritten_at=_now(cfg).isoformat(timespec="seconds"), rewritten_by=by or None)
     _notify_reviewer(cfg, d, [None], dash_url)
     save_drafts(drafts, sealer)
 
 
-def reject(cfg, draft_id, sealer):
+def reject(cfg, draft_id, sealer, by=""):
     drafts = load_drafts()
     d = _find_draft(drafts, draft_id)
     d["status"], d["rejected_at"] = "đã hủy", _now(cfg).isoformat(timespec="seconds")
+    d["rejected_by"] = by or None
     save_drafts(drafts, sealer)
 
 
@@ -398,6 +400,7 @@ def main(argv=None):
     p.add_argument("--date", help="Ngày T (YYYY-MM-DD), mặc định Chủ nhật gần nhất")
     p.add_argument("--groups", default="", help="chat_id nhóm (oc_...), cách nhau bởi dấu phẩy; trống = mọi nhóm đã đăng ký")
     p.add_argument("--draft", default="", help="mã bản nháp (approve / redraft / reject)")
+    p.add_argument("--by", default="", help="tên Admin thực hiện (approve / redraft / reject), ghi vào bản nháp")
     a = p.parse_args(argv)
     cfg = config_mod.load()
     chat_ids = {x.strip() for x in a.groups.split(",") if x.strip()}
@@ -424,14 +427,14 @@ def main(argv=None):
             raise SystemExit("Thiếu --draft")
         sealer = _Sealer()
         if a.cmd == "approve":
-            entries = approve(cfg, a.draft, sealer)
+            entries = approve(cfg, a.draft, sealer, a.by)
             write_history(sealer)
             if any(e["status"] == "lỗi" for e in entries):
                 sys.exit(1)
         elif a.cmd == "redraft":
-            redraft(cfg, a.draft, sealer)
+            redraft(cfg, a.draft, sealer, a.by)
         else:
-            reject(cfg, a.draft, sealer)
+            reject(cfg, a.draft, sealer, a.by)
     elif a.cmd == "test":
         live = sync_chats(cfg) or {}
         bot = _bot()
