@@ -8,7 +8,7 @@ Bảng chỉ gồm các chỉ số KHÔNG đạt KPI: Thị trường | Chỉ s�
 import os
 from datetime import date
 
-from .analysis import KPI_TYPE_LABEL, alerts_for, fmt_date, num, pct
+from .analysis import KPI_TYPE_LABEL, PROJECT_WEEKS, alerts_for, fmt_date, money, num, pct
 
 SOURCE_TABLE = os.getenv("SOURCE_TABLE", "hv-data.a_data_mart.sales_orders")
 METRIC_ORDER = ["chot", "giao", "gtc_clean"]
@@ -35,6 +35,17 @@ def _pp(x):
     return f"{abs(x) * 100:.1f}".replace(".", ",")
 
 
+def _template_causes(a: dict) -> list:
+    """Nguyên nhân theo quy tắc: top nguyên nhân mất đơn (% ảnh hưởng, doanh thu) + hệ quả nếu kéo dài."""
+    out = [f"{x['name']}: {num(x['orders'])} đơn, chiếm **{pct(x['share'], 0)}** đơn bị mất"
+           + (f" (hụt doanh thu ~{money(x['rev_week'])}/tuần)" if x["rev_week"] is not None else "")
+           for x in a["causes"][:3]]
+    r = a["revenue"]
+    out.append(f"Nếu kéo dài {PROJECT_WEEKS} tuần: hụt ~{num(a['gap_orders'] * PROJECT_WEEKS)} đơn"
+               + (f", hụt doanh thu ~**{money(r['gap_period'])}**" if r["gap_period"] is not None else "") + ".")
+    return out
+
+
 def _rows(report: dict, s: dict, ai: dict, near_pp: float) -> list:
     """Một dòng bảng cho mỗi chỉ số không đạt; nhóm theo thị trường (thị trường nặng nhất trước)."""
     by_mk = {m["market"]: m for m in report["markets"]}
@@ -49,7 +60,7 @@ def _rows(report: dict, s: dict, ai: dict, near_pp: float) -> list:
         mv, win = m["metrics"][a["metric"]], m["windows"][WINDOW_KIND[a["metric"]]]
         near = a["gap"] > -near_pp / 100
         sec = ai_secs.get((a["market"], a["label"]))
-        causes = sec["causes"] if sec else (a["levels"]["why"] + a["levels"]["impact"])[:4]
+        causes = sec["causes"] if sec else _template_causes(a)
         actions = sec["actions"] if sec else a["levels"]["action"][:3]
         prev = "" if a["prev"] is None else f"<br><font color='grey'>Tuần trước {pct(a['prev'])}</font>"
         rows.append({  # <br>: xuống dòng chắc chắn trong ô markdown của Lark
@@ -86,7 +97,12 @@ def _table(rows: list) -> dict:
 
 def _template_summary(s: dict, kpi_name: str, near_pp: float) -> dict:
     """NÓNG / LƯU Ý / TIN VUI theo quy tắc, dùng khi AI không chạy được."""
-    line = lambda a: f"{a['market']} {a['label'].lower()} {pct(a['value'])} (KPI {pct(a['target'], 0)})"
+    def line(a):
+        named = [x for x in a["causes"] if "(gộp)" not in x["name"]]
+        top, r = (named or [None])[0], a["revenue"]["gap_week"]
+        return (f"{a['market']} {a['label'].lower()} {pct(a['value'])} (KPI {pct(a['target'], 0)})"
+                + (f" do {top['name']} ({pct(top['share'], 0)} đơn bị mất)" if top else "")
+                + (f", hụt doanh thu ~{money(r)}/tuần" if r is not None else ""))
     hot = [a for a in s["alerts"] if a["gap"] <= -near_pp / 100]
     near = [a for a in s["alerts"] if a["gap"] > -near_pp / 100]
     return {

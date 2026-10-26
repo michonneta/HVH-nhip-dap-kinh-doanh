@@ -53,6 +53,22 @@ def num(n):
     return f"{n:,}".replace(",", ".")
 
 
+def money(v):
+    """Doanh thu VND rút gọn: 1,25 tỷ đ · 48,3 triệu đ."""
+    if v is None:
+        return "–"
+    if abs(v) >= 1e9:
+        return f"{v / 1e9:.2f} tỷ đ".replace(".", ",")
+    if abs(v) >= 1e6:
+        return f"{v / 1e6:.1f} triệu đ".replace(".", ",")
+    return f"{num(round(v))} đ"
+
+
+def aov(c):
+    """Doanh thu trung bình một đơn (đơn chờ gửi / đã xác nhận / đang giao / giao thành công) trong cửa sổ."""
+    return c["doanh_thu"] / c["don_dt"] if c.get("don_dt") else None
+
+
 def fmt_date(s):
     y, m, d = s.split("-")
     return f"{d}/{m}"
@@ -85,6 +101,32 @@ def _top_reasons(rows, col, limit=3):
     return [{"reason": r["seg"], "n": r[col], "share": r[col] / total if total else 0} for r in items[:limit]], total
 
 
+def _cause_items(metric, c, bd, rev) -> list:
+    """Nguyên nhân làm mất đơn: số đơn, % trên tổng đơn bị mất và doanh thu tương ứng (tuần / PROJECT_WEEKS tuần)."""
+    shipping = c["giao_dvvc"] - c["gtc"] - c["hoan"]
+    if metric == "gtc_clean":
+        buckets = [("Hủy", c["huy"]), ("Đang xử lý", c["dang_xl"]), ("Chờ gửi kho", c["cho_giao"] - shipping),
+                   ("Đang giao quá hạn", shipping), ("Hoàn", c["hoan"])]
+    else:
+        what, col, dim, rest = (("hủy", "huy", "cancel_reason", ("Đang xử lý", c["dang_xl"])) if metric == "chot"
+                                else ("hoàn", "hoan", "returned_reason", ("Đang giao quá hạn", shipping)))
+        top, total = _top_reasons(bd.get(dim, []), col)
+        buckets = [(f"{what.capitalize()}: {t['reason']}", t["n"]) for t in top]
+        other = c[col] - sum(t["n"] for t in top)
+        if other > 0:
+            buckets.append((f"{what.capitalize()}: các lý do khác (gộp)", other))
+        buckets.append(rest)
+    lost = sum(n for _, n in buckets if n > 0)
+    out = []
+    for name, n in sorted(buckets, key=lambda x: -x[1]):
+        if n <= 0:
+            continue
+        r = rev(n)
+        out.append({"name": name, "orders": n, "share": n / lost, "rev_week": r,
+                    "rev_period": None if r is None else r * PROJECT_WEEKS})
+    return out
+
+
 def analyze(m: dict, metric: str, kpi_type: str) -> dict:
     """m: một phần tử trong report['markets']."""
     label, kind, _, _ = METRICS[metric]
@@ -96,6 +138,8 @@ def analyze(m: dict, metric: str, kpi_type: str) -> dict:
     bd = m["breakdown"].get(kind, {})
     w = m["windows"][kind]
     kpi_name = KPI_TYPE_LABEL[kpi_type]
+    unit_rev = aov(c)
+    rev = lambda n: None if unit_rev is None else n * unit_rev
 
     # ---- Cấp 1: Điều gì đã xảy ra
     l1 = [
@@ -178,9 +222,13 @@ def analyze(m: dict, metric: str, kpi_type: str) -> dict:
         "giao": ("đơn giao thành công", "chi phí vận chuyển 2 chiều và hàng hoàn tăng theo"),
         "gtc_clean": ("đơn giao thành công", "doanh thu thực nhận giảm tương ứng"),
     }[metric]
+    gap_rev = rev(gap_orders)
     l3.append(
-        f"Nếu tiếp tục kéo dài: hụt ~{num(gap_orders)} {unit}/tuần so với KPI, tương đương "
-        f"~{num(gap_orders * PROJECT_WEEKS)} {unit} sau {PROJECT_WEEKS} tuần; {effect}."
+        f"Nếu tiếp tục kéo dài: hụt ~{num(gap_orders)} {unit}/tuần so với KPI"
+        + (f" (hụt doanh thu ~{money(gap_rev)}/tuần)" if gap_rev is not None else "")
+        + f", tương đương ~{num(gap_orders * PROJECT_WEEKS)} {unit}"
+        + (f" và hụt doanh thu ~{money(gap_rev * PROJECT_WEEKS)}" if gap_rev is not None else "")
+        + f" sau {PROJECT_WEEKS} tuần; {effect}."
     )
     if metric == "chot":
         l3.append("Tỷ lệ chốt thấp sẽ kéo theo tỷ lệ giao thành công từ data sạch không đạt ở các tuần kế tiếp.")
@@ -218,6 +266,9 @@ def analyze(m: dict, metric: str, kpi_type: str) -> dict:
         "market": m["market"], "metric": metric, "label": label, "kpi_type": kpi_type,
         "value": val, "target": target, "gap": val - target, "prev": prev,
         "gap_orders": gap_orders,
+        "revenue": {"aov": unit_rev, "gap_week": gap_rev,
+                    "gap_period": None if gap_rev is None else gap_rev * PROJECT_WEEKS},
+        "causes": _cause_items(metric, c, bd, rev),
         "headline": (
             f"{label} {pct(val)} (KPI {pct(target, 0)}, {pp(val - target)})"
             + (f" — nguyên nhân chính: {DIM_LABELS[main_driver['dim']]} {main_driver['seg']} "

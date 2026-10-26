@@ -19,7 +19,9 @@ METRICS = {
     "gtc_clean": ("Tỷ lệ giao thành công từ data sạch", "giao", "gtc", "clean"),
 }
 KPI_METRICS = ["chot", "giao", "gtc_clean"]
-COUNT_COLS = ["clean", "chot", "huy", "dang_xl", "cho_giao", "giao_dvvc", "gtc", "hoan"]
+# doanh_thu (VND) và don_dt (số đơn tính doanh thu) dùng để quy đổi đơn thiếu hụt ra doanh thu
+COUNT_COLS = ["clean", "chot", "huy", "dang_xl", "cho_giao", "giao_dvvc", "gtc", "hoan", "doanh_thu", "don_dt"]
+REVENUE_GROUPS = "('WAITINGSHIPMENT', 'CONFIRMED', 'SHIPPING', 'DELIVERED')"
 DIM_LABELS = {
     "sub_bu": "Sub BU",
     "sales_channel": "Kênh bán",
@@ -38,7 +40,10 @@ clean AS (
     IFNULL(NULLIF(ANY_VALUE(sales_channel), ''), '(trống)') AS sales_channel,
     IFNULL(NULLIF(ANY_VALUE(partner_name), ''), '(trống)') AS partner_name,
     IFNULL(NULLIF(ANY_VALUE(cancel_reason), ''), '(trống)') AS cancel_reason,
-    IFNULL(NULLIF(ANY_VALUE(returned_reason), ''), '(trống)') AS returned_reason
+    IFNULL(NULLIF(ANY_VALUE(returned_reason), ''), '(trống)') AS returned_reason,
+    -- Doanh thu = (gross_gmv - discount_amount) * fx_rate trừ VAT, cộng theo từng dòng sản phẩm của đơn
+    IFNULL(SUM((gross_gmv - discount_amount) * fx_rate), 0)
+      - IFNULL(SUM((gross_gmv - discount_amount) * vat_rate * fx_rate), 0) AS rev
   FROM `{table}`
   WHERE date_type = 'Ngày tạo đơn'
     AND event_date BETWEEN @min_date AND @max_date
@@ -56,7 +61,9 @@ _COUNTS_SQL = """
   COUNTIF(c.gc IN ('CONFIRMED', 'RESTOCKING', 'WAITINGSHIPMENT', 'SHIPPING')) AS cho_giao,
   COUNTIF(c.gc IN ('SHIPPING', 'DELIVERED', 'RETURNED')) AS giao_dvvc,
   COUNTIF(c.gc = 'DELIVERED') AS gtc,
-  COUNTIF(c.gc = 'RETURNED') AS hoan"""
+  COUNTIF(c.gc = 'RETURNED') AS hoan,
+  SAFE_CAST(SUM(IF(c.gc IN """ + REVENUE_GROUPS + """, c.rev, 0)) AS INT64) AS doanh_thu,
+  COUNTIF(c.gc IN """ + REVENUE_GROUPS + """) AS don_dt"""
 
 
 def _cfg_cte(cfg: dict) -> str:
@@ -193,7 +200,7 @@ def build_report(run_date: date, cfg: dict, with_analysis: bool = True, summary:
                 "chot": [str(chot_to - timedelta(days=wd - 1)), str(chot_to)],
                 "giao": [str(giao_to - timedelta(days=wd - 1)), str(giao_to)],
             },
-            "counts": {k: {c: counts[k].get(c, 0) for c in COUNT_COLS} for k in counts},
+            "counts": {k: {c: counts[k].get(c) or 0 for c in COUNT_COLS} for k in counts},
             "metrics": mm,
             "status": status,
             "breakdown": _breakdown_for(breakdown, code) if with_analysis else {},
@@ -206,7 +213,7 @@ def _breakdown_for(rows: list, market: str) -> dict:
     for r in rows:
         if r["market"] != market:
             continue
-        out[r["kind"]].setdefault(r["dim"], []).append({"seg": r["seg"], **{c: r[c] for c in COUNT_COLS}})
+        out[r["kind"]].setdefault(r["dim"], []).append({"seg": r["seg"], **{c: r.get(c) or 0 for c in COUNT_COLS}})
     return out
 
 

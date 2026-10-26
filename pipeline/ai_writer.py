@@ -14,7 +14,7 @@ import subprocess
 
 from pydantic import BaseModel
 
-from .analysis import KPI_TYPE_LABEL, METRICS, fmt_date
+from .analysis import KPI_TYPE_LABEL, METRICS, PROJECT_WEEKS, fmt_date, money
 
 log = logging.getLogger("nhip-dap")
 MODEL = os.getenv("AI_MODEL", "claude-opus-5-5")
@@ -53,7 +53,9 @@ gửi vào nhóm Lark của phòng.
 
 Cách viết:
 - Phần tóm tắt đầu bản tin theo Nguyên tắc Kim tự tháp (Barbara Minto), mỗi mục 1–3 câu ngắn, điều quan trọng nhất \
-nói trước, có số liệu then chốt và nguyên nhân chính:
+nói trước. Với mỗi chỉ số được nhắc tới phải đủ 3 ý: điều gì xảy ra (số liệu then chốt) → nguyên nhân chính (kèm \
+`ty_trong_pct`) → tác động, ghi rõ "hụt doanh thu `doanh_thu_thieu_hut_moi_tuan`/tuần" (có thể thêm \
+`doanh_thu_thieu_hut_4_tuan` nếu kéo dài):
   `hot` – NÓNG: các chỉ số có `muc_do` = "Không đạt KPI" (thiếu nhiều), thị trường nặng nhất trước;
   `watch` – LƯU Ý: chỉ số `muc_do` = "Gần đạt", chỉ số đạt nhưng sát ngưỡng (vượt KPI rất ít) hoặc giảm mạnh so với \
 tuần trước;
@@ -61,8 +63,11 @@ tuần trước;
   Mục nào không có nội dung thì để chuỗi rỗng. Chi tiết nằm trong bảng.
 - Bản tin hiển thị dạng BẢNG, mỗi chỉ số không đạt KPI là một dòng (một phần tử `sections`, đủ mọi cảnh báo trong \
 dữ liệu). Code đã tự điền cột Thực hiện (giá trị, KPI, chênh lệch); bạn viết 2 cột:
-  `causes` – Nguyên nhân: 2–4 gạch đầu dòng ngắn, gồm tại sao (cơ cấu hủy / đang xử lý / hoàn / đang giao, lý do \
-hàng đầu) và nguyên nhân chính tác động bao nhiêu % phần thiếu hụt (phân khúc Sub BU / kênh / DVVC);
+  `causes` – Nguyên nhân: 3–4 gạch đầu dòng ngắn. Mỗi nguyên nhân phải nêu chiếm bao nhiêu % ảnh hưởng: lấy từ \
+`nguyen_nhan_mat_don` (`ty_trong_pct` = % trên tổng đơn bị mất, kèm số đơn và `doanh_thu_mat_moi_tuan`) hoặc phân \
+khúc Sub BU / kênh / DVVC "gánh X% phần thiếu hụt" trong `phat_hien_tinh_san`. Gạch đầu dòng CUỐI CÙNG luôn là hệ \
+quả nếu tiếp tục: "Nếu kéo dài 4 tuần: hụt ~`don_thieu_hut_4_tuan` đơn, hụt doanh thu ~`doanh_thu_thieu_hut_4_tuan`" \
+(doanh thu = đơn thiếu hụt × `doanh_thu_tb_moi_don`, đã trừ chiết khấu và VAT);
   `actions` – Gợi ý hành động: 2–3 gạch đầu dòng, cụ thể ai làm gì, ưu tiên theo tác động.
   Mỗi gạch đầu dòng tối đa khoảng 25 từ (ô bảng hẹp, đọc trên điện thoại). Không lặp lại giá trị và KPI của dòng đó. \
 Hãy liên kết các chỉ số với nhau khi dữ liệu cho thấy (ví dụ tỷ lệ chốt thấp kéo tỷ lệ giao thành công từ data sạch \
@@ -74,7 +79,10 @@ xuống), đó là giá trị analyst mang lại so với bảng số.
 - `market` là mã thị trường; `metric` là tên chỉ số đúng như trường `chi_so` trong `canh_bao`.
 
 Quy tắc số liệu (bắt buộc):
-- Chỉ dùng con số có trong <du_lieu>, giữ nguyên giá trị; phần trăm viết dấu phẩy thập phân, ví dụ 77,9%.
+- Chỉ dùng con số có trong <du_lieu>, giữ nguyên giá trị; phần trăm viết dấu phẩy thập phân, ví dụ 77,9%. \
+Doanh thu chép nguyên chuỗi có sẵn (ví dụ "48,3 triệu đ", "1,25 tỷ đ"), không làm tròn lại.
+- Số tiền luôn đi ngay sau cụm "hụt doanh thu" (không dùng "mất doanh thu" hay cách nói khác), ví dụ "hụt doanh thu 45,9 triệu đ/tuần", \
+"Hủy chiếm 63% (252 đơn, hụt doanh thu 96,4 triệu đ/tuần)". Không viết trống kiểu "hụt 45,9 triệu đ".
 - Không tự tính thêm con số mới (cộng, trừ, nhân, chia, làm tròn khác đi). Cần chênh lệch thì dùng trường có sẵn.
 - Không suy đoán nguyên nhân ngoài dữ liệu như sự thật; nếu nêu giả thuyết thì ghi rõ "giả thuyết" và đề xuất cách kiểm chứng."""
 
@@ -109,6 +117,14 @@ def build_facts(report: dict, kpi_type: str, s: dict, near_pp: float = 2) -> dic
         "thi_truong": a["market"], "chi_so": a["label"], "gia_tri_pct": _r(a["value"]), "kpi_pct": _r(a["target"]),
         "chenh_lech_kpi_diem_pct": round(a["gap"] * 100, 1), "don_thieu_hut_moi_tuan": a["gap_orders"],
         "muc_do": "Gần đạt" if a["gap"] > -near_pp / 100 else "Không đạt KPI",
+        "don_thieu_hut_4_tuan": a["gap_orders"] * PROJECT_WEEKS,
+        "doanh_thu_tb_moi_don": money(a["revenue"]["aov"]),
+        "doanh_thu_thieu_hut_moi_tuan": money(a["revenue"]["gap_week"]),
+        "doanh_thu_thieu_hut_4_tuan": money(a["revenue"]["gap_period"]),
+        "nguyen_nhan_mat_don": [{
+            "nguyen_nhan": x["name"], "so_don": x["orders"], "ty_trong_pct": _r(x["share"], 0),
+            "doanh_thu_mat_moi_tuan": money(x["rev_week"]), "doanh_thu_mat_4_tuan": money(x["rev_period"]),
+        } for x in a["causes"]],
         "phat_hien_tinh_san": a["levels"],
     } for a in s["alerts"]]
     return {
@@ -170,6 +186,20 @@ def unknown_numbers(ai: dict, facts: dict) -> list:
         if not any(abs(n - a) <= 0.051 for a in allowed):
             bad.append(n)
     return sorted(set(bad))
+
+
+_MONEY = re.compile(r"\d[\d.,]*\s*(?:triệu|tỷ)\s*đ")
+
+
+def unlabeled_money(ai: dict) -> list:
+    """Số tiền không có cụm "hụt doanh thu" ngay phía trước (vd "hụt 45,9 triệu đ" thay vì "hụt doanh thu 45,9 triệu đ")."""
+    bad = []
+    for text in [ai["hot"], ai["watch"], ai["good"]] + [x for s in ai["sections"] for x in s["causes"] + s["actions"]]:
+        for m in _MONEY.finditer(text):
+            before = re.sub(r"[*~]", "", text[max(0, m.start() - 30):m.start()]).lower()
+            if "hụt doanh thu" not in before:
+                bad.append(m.group(0))
+    return bad
 
 
 # ---------------------------------------------------------------- gọi Claude
@@ -249,14 +279,21 @@ def write(report: dict, kpi_type: str, s: dict, near_pp: float = 2) -> dict:
     facts = build_facts(report, kpi_type, s, near_pp)
     prompt = build_prompt(facts)
     ai = _ask(prompt).model_dump()
-    bad = unknown_numbers(ai, facts)
-    if bad:
-        log.warning("AI dùng số không có trong dữ liệu %s — yêu cầu viết lại", bad)
-        note = ("\n\nLần viết trước đã dùng các con số không có trong <du_lieu>: "
-                + ", ".join(f"{n:g}".replace(".", ",") for n in bad)
-                + ". Lần này chỉ dùng đúng con số có sẵn trong dữ liệu, không tự tính thêm.")
+    bad, unlabeled = unknown_numbers(ai, facts), unlabeled_money(ai)
+    if bad or unlabeled:
+        log.warning("AI dùng số không có trong dữ liệu %s / số tiền thiếu chữ 'hụt doanh thu' %s — yêu cầu viết lại",
+                    bad, unlabeled)
+        note = "\n\nLần viết trước chưa đạt:"
+        if bad:
+            note += ("\n- Dùng các con số không có trong <du_lieu>: " + ", ".join(f"{n:g}".replace(".", ",") for n in bad)
+                     + ". Lần này chỉ dùng đúng con số có sẵn trong dữ liệu, không tự tính thêm.")
+        if unlabeled:
+            note += ("\n- Số tiền thiếu cụm \"hụt doanh thu\" phía trước: " + ", ".join(unlabeled)
+                     + ". Viết dạng \"hụt doanh thu 45,9 triệu đ/tuần\".")
         ai = _ask(prompt + note).model_dump()
         bad = unknown_numbers(ai, facts)
         if bad:
             raise ValueError(f"AI vẫn dùng số không có trong dữ liệu: {bad}")
+        if unlabeled_money(ai):  # chỉ là cách diễn đạt, không sai số: vẫn dùng bản AI
+            log.warning("AI vẫn có số tiền thiếu chữ 'hụt doanh thu': %s", unlabeled_money(ai))
     return ai
