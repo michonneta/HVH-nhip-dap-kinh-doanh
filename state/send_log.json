@@ -188,5 +188,24 @@
   "author": "mẫu",
   "status": "chờ duyệt",
   "draft_id": "20261025-survival-080947-CAM-ID-ML-PH-TH-VN"
+ },
+ {
+  "at": "2026-10-26T08:13:09+07:00",
+  "trigger": "duyệt bản nháp",
+  "run_date": "2026-10-25",
+  "schedule_id": null,
+  "occurrence": null,
+  "group_id": "oc_513fd0e6953e2440e4cdee34ff3a6829:survival",
+  "group": "[HVH] Cập nhật bản tin Sinh tồn",
+  "kpi_type": "survival",
+  "draft_id": "20261025-survival-080944",
+  "failing": [
+   "ML",
+   "TH",
+   "VN"
+  ],
+  "author": "mẫu",
+  "message_id": "om_x100b62dedc906ca8ffa9f691ac4ba56",
+  "status": "đã gửi"
  }
 ]
