@@ -31,20 +31,18 @@ def backend() -> str:
 
 
 class Section(BaseModel):
+    """Một dòng của bảng bản tin (một chỉ số không đạt của một thị trường)."""
     market: str
     metric: str
-    what: list[str]
-    why: list[str]
-    impact: list[str]
-    action: list[str]
+    causes: list[str]   # cột Nguyên nhân
+    actions: list[str]  # cột Gợi ý hành động
 
 
 class AIBulletin(BaseModel):
-    opening: str
-    conclusion: str
-    key_points: list[str]
+    hot: str     # NÓNG
+    watch: str   # LƯU Ý
+    good: str    # TIN VUI
     sections: list[Section]
-    closing: str
 
 
 SYSTEM_PROMPT = """Bạn là Data Analyst của Phòng Dịch vụ khách hàng (P.DVKH) – HV HOLDINGS. Mỗi kỳ bạn đọc dữ liệu \
@@ -54,21 +52,26 @@ gửi vào nhóm Lark của phòng.
 Đối tượng đọc: trưởng nhóm và nhân viên vận hành, đọc trên điện thoại, cần biết ngay việc gì phải làm.
 
 Cách viết:
-- Theo Nguyên tắc Kim tự tháp (Barbara Minto): `conclusion` là điều quan trọng nhất trong 1–2 câu; `key_points` là \
-3–5 luận điểm chính, mỗi ý gắn với một hành động; chi tiết để ở `sections`.
-- Mỗi chỉ số không đạt KPI là một phần tử trong `sections`, sắp theo mức nghiêm trọng, đủ 4 cấp độ:
-  `what` – điều gì đã xảy ra (giá trị, KPI, chênh lệch, so tuần trước);
-  `why` – tại sao (cơ cấu hủy / đang xử lý / hoàn / đang giao, lý do hàng đầu);
-  `impact` – nguyên nhân chính tác động bao nhiêu % tới phần thiếu hụt và hệ quả nếu kéo dài;
-  `action` – nên làm gì, cụ thể ai/việc gì, ưu tiên theo tác động.
-  Mỗi cấp độ 1–3 gạch đầu dòng ngắn. Hãy liên kết các chỉ số với nhau khi dữ liệu cho thấy (ví dụ tỷ lệ chốt thấp kéo \
-tỷ lệ giao thành công từ data sạch xuống), đó là giá trị analyst mang lại so với bảng số.
-- Giọng "loa phường" của bản tin "Nhịp đập kinh doanh": `opening` bắt đầu bằng "📣 **Alo alo!**", thân thiện, \
-rõ ràng, không cường điệu; `closing` một câu hẹn bản tin sau và động viên đội.
-- Nếu không có chỉ số nào dưới KPI: `sections` để trống, khen ngợi ngắn gọn và nêu điểm cần giữ hoặc rủi ro sớm \
-(chỉ số giảm so với tuần trước) trong `key_points`.
+- Phần tóm tắt đầu bản tin theo Nguyên tắc Kim tự tháp (Barbara Minto), mỗi mục 1–3 câu ngắn, điều quan trọng nhất \
+nói trước, có số liệu then chốt và nguyên nhân chính:
+  `hot` – NÓNG: các chỉ số có `muc_do` = "Không đạt KPI" (thiếu nhiều), thị trường nặng nhất trước;
+  `watch` – LƯU Ý: chỉ số `muc_do` = "Gần đạt", chỉ số đạt nhưng sát ngưỡng (vượt KPI rất ít) hoặc giảm mạnh so với \
+tuần trước;
+  `good` – TIN VUI: thị trường đạt toàn bộ chỉ số, chỉ số vượt KPI rõ hoặc cải thiện so với tuần trước.
+  Mục nào không có nội dung thì để chuỗi rỗng. Chi tiết nằm trong bảng.
+- Bản tin hiển thị dạng BẢNG, mỗi chỉ số không đạt KPI là một dòng (một phần tử `sections`, đủ mọi cảnh báo trong \
+dữ liệu). Code đã tự điền cột Thực hiện (giá trị, KPI, chênh lệch); bạn viết 2 cột:
+  `causes` – Nguyên nhân: 2–4 gạch đầu dòng ngắn, gồm tại sao (cơ cấu hủy / đang xử lý / hoàn / đang giao, lý do \
+hàng đầu) và nguyên nhân chính tác động bao nhiêu % phần thiếu hụt (phân khúc Sub BU / kênh / DVVC);
+  `actions` – Gợi ý hành động: 2–3 gạch đầu dòng, cụ thể ai làm gì, ưu tiên theo tác động.
+  Mỗi gạch đầu dòng tối đa khoảng 25 từ (ô bảng hẹp, đọc trên điện thoại). Không lặp lại giá trị và KPI của dòng đó. \
+Hãy liên kết các chỉ số với nhau khi dữ liệu cho thấy (ví dụ tỷ lệ chốt thấp kéo tỷ lệ giao thành công từ data sạch \
+xuống), đó là giá trị analyst mang lại so với bảng số.
+- Giọng "loa phường" của bản tin "Nhịp đập kinh doanh": thân thiện, rõ ràng, không cường điệu.
+- Nếu không có chỉ số nào dưới KPI: `sections` để trống, `hot` rỗng, khen ngợi trong `good` và nêu rủi ro sớm \
+(chỉ số giảm so với tuần trước) trong `watch`.
 - Định dạng: tiếng Việt, được dùng **in đậm** cho số liệu then chốt; không dùng tiêu đề markdown (#), không bảng.
-- `market` là mã thị trường; `metric` là tên chỉ số đúng như trong dữ liệu.
+- `market` là mã thị trường; `metric` là tên chỉ số đúng như trường `chi_so` trong `canh_bao`.
 
 Quy tắc số liệu (bắt buộc):
 - Chỉ dùng con số có trong <du_lieu>, giữ nguyên giá trị; phần trăm viết dấu phẩy thập phân, ví dụ 77,9%.
@@ -80,7 +83,7 @@ def _r(x, nd=1):
     return None if x is None else round(x * 100, nd)
 
 
-def build_facts(report: dict, kpi_type: str, s: dict) -> dict:
+def build_facts(report: dict, kpi_type: str, s: dict, near_pp: float = 2) -> dict:
     """Bộ dữ liệu AI được đọc: đúng những gì Dashboard hiển thị cho phạm vi bản tin."""
     markets = []
     for m in s["scope"]:
@@ -105,6 +108,7 @@ def build_facts(report: dict, kpi_type: str, s: dict) -> dict:
     findings = [{
         "thi_truong": a["market"], "chi_so": a["label"], "gia_tri_pct": _r(a["value"]), "kpi_pct": _r(a["target"]),
         "chenh_lech_kpi_diem_pct": round(a["gap"] * 100, 1), "don_thieu_hut_moi_tuan": a["gap_orders"],
+        "muc_do": "Gần đạt" if a["gap"] > -near_pp / 100 else "Không đạt KPI",
         "phat_hien_tinh_san": a["levels"],
     } for a in s["alerts"]]
     return {
@@ -172,15 +176,14 @@ def unknown_numbers(ai: dict, facts: dict) -> list:
 _LIST = {"type": "array", "items": {"type": "string"}}
 SCHEMA = {  # khuôn JSON tường minh (không $ref) cho Claude Code --json-schema
     "type": "object", "additionalProperties": False,
-    "required": ["opening", "conclusion", "key_points", "sections", "closing"],
+    "required": ["hot", "watch", "good", "sections"],
     "properties": {
-        "opening": {"type": "string"}, "conclusion": {"type": "string"}, "key_points": _LIST,
-        "closing": {"type": "string"},
+        "hot": {"type": "string"}, "watch": {"type": "string"}, "good": {"type": "string"},
         "sections": {"type": "array", "items": {
             "type": "object", "additionalProperties": False,
-            "required": ["market", "metric", "what", "why", "impact", "action"],
+            "required": ["market", "metric", "causes", "actions"],
             "properties": {"market": {"type": "string"}, "metric": {"type": "string"},
-                           "what": _LIST, "why": _LIST, "impact": _LIST, "action": _LIST}}},
+                           "causes": _LIST, "actions": _LIST}}},
     },
 }
 
@@ -241,9 +244,9 @@ def build_prompt(facts: dict) -> str:
             + json.dumps(facts, ensure_ascii=False, indent=1) + "\n</du_lieu>")
 
 
-def write(report: dict, kpi_type: str, s: dict) -> dict:
+def write(report: dict, kpi_type: str, s: dict, near_pp: float = 2) -> dict:
     """Trả về dict AIBulletin đã qua kiểm tra số liệu; lỗi thì raise để bên gọi dùng mẫu."""
-    facts = build_facts(report, kpi_type, s)
+    facts = build_facts(report, kpi_type, s, near_pp)
     prompt = build_prompt(facts)
     ai = _ask(prompt).model_dump()
     bad = unknown_numbers(ai, facts)

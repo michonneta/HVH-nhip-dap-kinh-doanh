@@ -146,6 +146,9 @@ dialog::backdrop { background: rgba(0,0,0,.4); }
 .lark-body { padding: 12px 16px; max-height: 65vh; overflow: auto; }
 .lark-body hr { border: 0; border-top: 1px solid var(--grid); }
 .lark-body .note { color: var(--muted); font-size: 12px; }
+.ltable td, .ltable th { text-align: left; vertical-align: top; white-space: normal; font-size: 13px; }
+.ltable ul { margin: 0; padding-left: 16px; }
+.ltable li { margin-bottom: 3px; }
 .empty { padding: 24px; text-align: center; color: var(--muted); }
 .gate { max-width: 380px; margin: 12vh auto; }
 .gate input { width: 100%; margin: 8px 0 12px; }
@@ -1000,12 +1003,43 @@ $('#schedules').onclick = e => {
   state.cfg.schedules.splice(i, 1); renderConfig(); scheduleSave();
 };
 
+/** Markdown của card Lark → HTML (đậm, nghiêng, <br>, <font color>, gạch đầu dòng). */
+function larkMd(s) {
+  const FONT = { red: 'var(--critical)', orange: 'var(--warn)', green: 'var(--good-text)', grey: 'var(--muted)' };
+  let h = esc(s)
+    .replace(/&lt;br&gt;/g, '<br>')
+    .replace(/&lt;font color=&#39;(\w+)&#39;&gt;(.*?)&lt;\/font&gt;/g, (m, c, t) => `<span style="color:${FONT[c] || 'inherit'}">${t}</span>`)
+    .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/(^|\s)\*(.+?)\*/g, '$1<i>$2</i>').replace(/`(.+?)`/g, '<code>$1</code>');
+  const lines = h.split('\n'), out = []; let inList = false;
+  for (const ln of lines) {
+    if (ln.startsWith('- ')) { if (!inList) { out.push('<ul>'); inList = true; } out.push('<li>' + ln.slice(2) + '</li>'); continue; }
+    if (inList) { out.push('</ul>'); inList = false; }
+    out.push(ln === '' ? '<br>' : ln + '<br>');
+  }
+  if (inList) out.push('</ul>');
+  return out.join('');
+}
 function cardBodyHtml(card) {
-  return card.elements.map(el => {
+  const els = card.body ? card.body.elements : card.elements;  // card JSON 2.0 (body.elements) hoặc 1.0
+  const sub = card.header && card.header.subtitle ? `<p class="note">${esc(card.header.subtitle.content)}</p>` : '';
+  return sub + renderEls(els);
+}
+function renderEls(els) {
+  return els.map(el => {
     if (el.tag === 'hr') return '<hr>';
-    if (el.tag === 'markdown') return '<p>' + md(el.content).replace(/\n/g, '<br>') + '</p>';
+    if (el.tag === 'column_set') return '<div style="display:flex;gap:8px;align-items:flex-start;margin:4px 0">' + el.columns.map(c =>
+      `<div style="${c.width === 'weighted' ? 'flex:1;min-width:0' : 'flex:none;width:' + c.width}">${renderEls(c.elements)}</div>`).join('') + '</div>';
+    if (el.tag === 'markdown') return `<div class="${el.text_size === 'notation' ? 'note' : ''}" style="margin:8px 0">${larkMd(el.content)}</div>`;
     if (el.tag === 'note') return '<p class="note">' + esc(el.elements.map(x => x.content).join(' ')) + '</p>';
+    if (el.tag === 'button') return `<p><a class="btn primary" href="${esc(el.behaviors[0].default_url)}" target="_blank" rel="noopener">${esc(el.text.content)}</a></p>`;
     if (el.tag === 'action') return '<p>' + el.actions.map(a => `<a class="btn primary" href="${esc(a.url)}" target="_blank" rel="noopener">${esc(a.text.content)}</a>`).join(' ') + '</p>';
+    if (el.tag === 'table') {
+      const cell = (c, v) => c.data_type === 'options'
+        ? v.map(o => `<span class="badge ${o.color === 'red' ? 'bad' : o.color === 'orange' ? 'warn' : 'ok'}">${esc(o.text)}</span>`).join(' ')
+        : c.data_type === 'text' ? `<b>${esc(v)}</b>` : larkMd(v);
+      return `<div class="tbl-wrap" style="margin:10px 0"><table class="ltable"><thead><tr>${el.columns.map(c => `<th style="min-width:${c.width}">${esc(c.display_name)}</th>`).join('')}</tr></thead><tbody>`
+        + el.rows.map(r => '<tr>' + el.columns.map(c => `<td>${cell(c, r[c.name])}</td>`).join('') + '</tr>').join('') + '</tbody></table></div>';
+    }
     return '';
   }).join('');
 }

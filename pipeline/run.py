@@ -137,20 +137,35 @@ def _ai_enabled(cfg) -> bool:
     return cfg["ai"]["enabled"] and bool(backend())
 
 
+DOW_VI = {"mon": "thứ Hai", "tue": "thứ Ba", "wed": "thứ Tư", "thu": "thứ Năm", "fri": "thứ Sáu",
+          "sat": "thứ Bảy", "sun": "Chủ nhật", "mon-fri": "ngày làm việc", "*": "ngày"}
+
+
+def next_note(cfg) -> str:
+    """Câu "bản tin tiếp theo sẽ phát vào ..." theo lịch gửi đầu tiên đang bật, vd "sáng Chủ nhật tuần sau"."""
+    s = next((x for x in cfg["schedules"] if x.get("enabled", True)), None)
+    if not s:
+        return ""
+    buoi = "sáng" if s["hour"] < 12 else "chiều" if s["hour"] < 18 else "tối"
+    when = {"mon-fri": f"{buoi} ngày làm việc tiếp theo", "*": f"{buoi} mai"}.get(s["day_of_week"])
+    return when or f"{buoi} {DOW_VI[s['day_of_week']]} tuần sau"
+
+
 def compose(cfg, report, kpi_type, markets, dash_url, cache) -> dict:
     """Bản tin cho một phạm vi (loại KPI + thị trường). AI viết thân bài; lỗi thì dùng mẫu theo quy tắc."""
     key = (report["run_date"], kpi_type, tuple(sorted(markets)))
     if key in cache:
         return cache[key]
     scope = {"kpi_type": kpi_type, "markets": markets}
-    b = build_bulletin(report, scope, dash_url)
+    opts = {"near_pp": cfg["near_pp"], "next_note": next_note(cfg)}
+    b = build_bulletin(report, scope, dash_url, **opts)
     b["author"], b["ai_error"] = "mẫu", None
     if b["has_alert"] or cfg["send_when_ok"]:
         if _ai_enabled(cfg):
             try:
                 from . import ai_writer
-                ai = ai_writer.write(report, kpi_type, b)
-                b = {**build_bulletin(report, scope, dash_url, ai=ai), "author": "AI", "ai_error": None}
+                ai = ai_writer.write(report, kpi_type, b, cfg["near_pp"])
+                b = {**build_bulletin(report, scope, dash_url, ai=ai, **opts), "author": "AI", "ai_error": None}
             except Exception as e:  # không để lỡ lịch vì AI: quay về mẫu, ghi lại lý do
                 log.exception("AI Analyst lỗi, dùng bản tin theo mẫu")
                 b["ai_error"] = str(e)[:300]

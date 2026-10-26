@@ -1,23 +1,23 @@
-"""Bản tin "Nhịp đập kinh doanh" gửi Lark.
+"""Bản tin "Nhịp đập kinh doanh" gửi Lark — card JSON 2.0 dạng bảng.
 
-Trình bày theo Nguyên tắc Kim tự tháp (Barbara Minto): kết luận trước → các luận điểm chính → dữ liệu chi tiết
-4 cấp độ cho từng thị trường. Giọng văn "loa phường": mở đầu thông báo, kết thúc hẹn bản tin sau.
-
-Thân bản tin do AI Analyst viết (pipeline/ai_writer.py); khi AI không chạy được thì dùng mẫu theo quy tắc ở đây.
-Khung bản tin (tiêu đề, nút Dashboard, nguồn dữ liệu) luôn do code dựng để thống nhất.
+Trình bày theo Nguyên tắc Kim tự tháp (Barbara Minto): mở đầu + kết luận ở trên, bảng chi tiết bên dưới.
+Bảng chỉ gồm các chỉ số KHÔNG đạt KPI: Thị trường | Chỉ số | Thực hiện | Cảnh báo | Nguyên nhân | Gợi ý hành động.
+- Cột Thực hiện do code điền (số liệu luôn đúng).
+- Nguyên nhân / Gợi ý hành động do AI Analyst viết (pipeline/ai_writer.py); AI lỗi thì lấy từ phân tích theo quy tắc.
 """
 import os
+from datetime import date
 
-from .analysis import KPI_TYPE_LABEL, alerts_for, fmt_date
+from .analysis import KPI_TYPE_LABEL, alerts_for, fmt_date, num, pct
 
 SOURCE_TABLE = os.getenv("SOURCE_TABLE", "hv-data.a_data_mart.sales_orders")
-
-LEVEL_TITLES = [
-    ("what", "1️⃣ Điều gì đã xảy ra"),
-    ("why", "2️⃣ Tại sao"),
-    ("impact", "3️⃣ Nguyên nhân chính & tác động"),
-    ("action", "4️⃣ Chúng ta nên làm gì"),
-]
+METRIC_ORDER = ["chot", "giao", "gtc_clean"]
+METRIC_DEF = {
+    "chot": "Đơn chốt ÷ data sạch",
+    "giao": "Đơn giao thành công ÷ đơn giao DVVC",
+    "gtc_clean": "Đơn giao thành công ÷ data sạch",
+}
+WINDOW_KIND = {"chot": "chot", "giao": "giao", "gtc_clean": "giao"}
 
 
 def scope_of(report: dict, kpi_type: str, markets: list) -> dict:
@@ -31,85 +31,124 @@ def scope_of(report: dict, kpi_type: str, markets: list) -> dict:
             "passing": [m["market"] for m in scope if m["market"] not in failing]}
 
 
-def _template_body(s: dict, kpi_name: str) -> list:
-    alerts, failing, passing, scope = s["alerts"], s["failing"], s["passing"], s["scope"]
-    if not alerts:
-        return [{"tag": "markdown", "content":
-                 f"📣 **Alo alo!** Bản tin *Nhịp đập kinh doanh* xin thông báo: tuần này **tất cả {len(scope)} thị trường "
-                 f"đều đạt KPI {kpi_name}**. Xin biểu dương toàn thể anh chị em, tiếp tục giữ vững phong độ!"}]
-    elements = [{"tag": "markdown", "content":
-                 f"📣 **Alo alo!** Bản tin *Nhịp đập kinh doanh* xin thông báo tới toàn thể anh chị em: "
-                 f"tuần này có **{len(failing)}/{len(scope)} thị trường chưa đạt KPI {kpi_name}** "
-                 f"({', '.join(failing)}), tổng cộng **{len(alerts)} chỉ số** cần xử lý ngay."}]
-    # Đỉnh kim tự tháp: kết luận & điều cần làm ngay
-    top_lines = ["**🎯 Kết luận chính**"]
+def _pp(x):
+    return f"{abs(x) * 100:.1f}".replace(".", ",")
+
+
+def _rows(report: dict, s: dict, ai: dict, near_pp: float) -> list:
+    """Một dòng bảng cho mỗi chỉ số không đạt; nhóm theo thị trường (thị trường nặng nhất trước)."""
+    by_mk = {m["market"]: m for m in report["markets"]}
+    ai_secs = {(x["market"], x["metric"]): x for x in (ai or {}).get("sections", [])}
+    worst = {}
+    for a in s["alerts"]:
+        worst[a["market"]] = min(worst.get(a["market"], 0), a["gap"])
+    alerts = sorted(s["alerts"], key=lambda a: (worst[a["market"]], a["market"], METRIC_ORDER.index(a["metric"])))
+    rows = []
     for a in alerts:
-        top_lines.append(f"🔴 **{a['market']}** · {a['headline']}")
-        top_lines.append(f"　→ {a['levels']['action'][0]}")
-    elements.append({"tag": "markdown", "content": "\n".join(top_lines)})
-    if passing:
-        elements.append({"tag": "markdown", "content": f"✅ Đạt KPI {kpi_name}: {', '.join(passing)}"})
-    # Thân kim tự tháp: chi tiết 4 cấp độ
-    for a in alerts:
-        elements.append({"tag": "hr"})
-        lines = [f"**📍 {a['market']} — {a['label']}**"]
-        for key, title in LEVEL_TITLES:
-            lines.append(f"**{title}**")
-            lines += [f"• {x}" for x in a["levels"][key]]
-        elements.append({"tag": "markdown", "content": "\n".join(lines)})
-    return elements
+        m = by_mk[a["market"]]
+        mv, win = m["metrics"][a["metric"]], m["windows"][WINDOW_KIND[a["metric"]]]
+        near = a["gap"] > -near_pp / 100
+        sec = ai_secs.get((a["market"], a["label"]))
+        causes = sec["causes"] if sec else (a["levels"]["why"] + a["levels"]["impact"])[:4]
+        actions = sec["actions"] if sec else a["levels"]["action"][:3]
+        prev = "" if a["prev"] is None else f"<br><font color='grey'>Tuần trước {pct(a['prev'])}</font>"
+        rows.append({  # <br>: xuống dòng chắc chắn trong ô markdown của Lark
+            "mk": a["market"],
+            "metric": f"**{a['label']}**<br><font color='grey'>{METRIC_DEF[a['metric']]}. Đơn tạo {fmt_date(win[0])} – {fmt_date(win[1])}</font>",
+            "val": f"**{pct(a['value'])}**<br>{num(mv['num'])} / {num(mv['den'])} đơn<br>"
+                   f"KPI {pct(a['target'], 0)} · <font color='{'orange' if near else 'red'}'>▼ thiếu {_pp(a['gap'])} điểm</font>{prev}",
+            "alert": [{"text": "Gần đạt" if near else "Không đạt KPI", "color": "orange" if near else "red"}],
+            "why": "\n".join(f"- {x}" for x in causes),
+            "act": "\n".join(f"- {x}" for x in actions),
+        })
+    return rows
 
 
-def _ai_body(ai: dict) -> list:
-    """ai: kết quả AIBulletin (dict) đã qua kiểm tra số liệu."""
-    elements = [{"tag": "markdown", "content": ai["opening"]}]
-    top = ["**🎯 Kết luận chính**", ai["conclusion"]] + [f"• {p}" for p in ai["key_points"]]
-    elements.append({"tag": "markdown", "content": "\n".join(top)})
-    for sec in ai["sections"]:
-        elements.append({"tag": "hr"})
-        lines = [f"**📍 {sec['market']} — {sec['metric']}**"]
-        for key, title in LEVEL_TITLES:
-            lines.append(f"**{title}**")
-            lines += [f"• {x}" for x in sec[key]]
-        elements.append({"tag": "markdown", "content": "\n".join(lines)})
-    if ai.get("closing"):
-        elements.append({"tag": "markdown", "content": ai["closing"]})
-    return elements
+def _table(rows: list) -> dict:
+    col = lambda name, label, dtype, width: {"name": name, "display_name": label, "data_type": dtype,
+                                             "width": width, "vertical_align": "top"}
+    return {
+        "tag": "table", "element_id": "bang_canh_bao",
+        "page_size": 10, "row_height": "auto", "row_max_height": "600px", "freeze_first_column": True,
+        "header_style": {"text_align": "left", "text_size": "normal", "background_style": "grey",
+                         "text_color": "default", "bold": True, "lines": 1},
+        "columns": [
+            col("mk", "Thị trường", "text", "90px"),
+            col("metric", "Chỉ số", "markdown", "170px"),
+            col("val", "Thực hiện", "markdown", "170px"),
+            col("alert", "Cảnh báo", "options", "120px"),
+            col("why", "Nguyên nhân", "markdown", "340px"),
+            col("act", "Gợi ý hành động", "markdown", "340px"),
+        ],
+        "rows": rows,
+    }
 
 
-def build_bulletin(report: dict, group: dict, dashboard_url: str = "", ai: dict = None) -> dict:
+def _template_summary(s: dict, kpi_name: str, near_pp: float) -> dict:
+    """NÓNG / LƯU Ý / TIN VUI theo quy tắc, dùng khi AI không chạy được."""
+    line = lambda a: f"{a['market']} {a['label'].lower()} {pct(a['value'])} (KPI {pct(a['target'], 0)})"
+    hot = [a for a in s["alerts"] if a["gap"] <= -near_pp / 100]
+    near = [a for a in s["alerts"] if a["gap"] > -near_pp / 100]
+    return {
+        "hot": ("; ".join(line(a) for a in hot) + ".") if hot else "",
+        "watch": ("Gần đạt: " + "; ".join(line(a) for a in near) + ".") if near else "",
+        "good": (f"{', '.join(s['passing'])} đạt toàn bộ KPI {kpi_name}.") if s["passing"] else "",
+    }
+
+
+def _summary(s: dict, kpi_name: str, ai: dict, week: int, near_pp: float, next_note: str) -> list:
+    """Tóm tắt đầu bản tin: NÓNG (đỏ) / LƯU Ý (cam) / TIN VUI (xanh), rồi câu mời đọc chi tiết."""
+    sm = ai or _template_summary(s, kpi_name, near_pp)
+    els = [{"tag": "markdown", "text_size": "notation", "content": f"<font color='grey'>**TÓM TẮT BẢN TIN TUẦN {week}**</font>"}]
+    for key, label, color in (("hot", "NÓNG:", "red"), ("watch", "LƯU Ý:", "orange"), ("good", "TIN VUI:", "green")):
+        text = (sm.get(key) or "").strip()
+        if not text:
+            continue
+        els.append({"tag": "column_set", "flex_mode": "none", "horizontal_spacing": "8px", "columns": [
+            {"tag": "column", "width": "72px", "vertical_align": "top",
+             "elements": [{"tag": "markdown", "content": f"<font color='{color}'>**{label}**</font>"}]},
+            {"tag": "column", "width": "weighted", "weight": 1, "vertical_align": "top",
+             "elements": [{"tag": "markdown", "content": text}]},
+        ]})
+    els.append({"tag": "hr"})
+    els.append({"tag": "markdown", "content":
+                f"<font color='grey'>Mời đọc chi tiết bản tin ở bên dưới. Cảm ơn anh em đã quan tâm, "
+                f"bản tin tiếp theo sẽ phát vào {next_note or 'tuần sau'}.</font>"})
+    return els
+
+
+def build_bulletin(report: dict, group: dict, dashboard_url: str = "", ai: dict = None, near_pp: float = 2,
+                   next_note: str = "") -> dict:
+    """next_note: thời điểm phát bản tin kế tiếp, vd "sáng Chủ nhật tuần sau" (lấy từ lịch gửi)."""
     kpi_type = group["kpi_type"]
     kpi_name = KPI_TYPE_LABEL[kpi_type]
     s = scope_of(report, kpi_type, group.get("markets") or [])
     run = report["run_date"]
+    week = date.fromisoformat(run).isocalendar()[1]  # tuần ISO của ngày T (Chủ nhật kết thúc tuần)
 
-    elements = _ai_body(ai) if ai else _template_body(s, kpi_name)
-    elements.append({"tag": "hr"})
-    windows = "; ".join(
-        f"{m['market']}: chốt {fmt_date(m['windows']['chot'][0])}–{fmt_date(m['windows']['chot'][1])}, "
-        f"giao {fmt_date(m['windows']['giao'][0])}–{fmt_date(m['windows']['giao'][1])}"
-        for m in s["scope"]
-    )
+    elements = _summary(s, kpi_name, ai, week, near_pp, next_note)
+    if s["alerts"]:
+        elements.append(_table(_rows(report, s, ai, near_pp)))
+    if s["passing"] and s["alerts"]:
+        elements.append({"tag": "markdown", "content": f"✅ Đạt toàn bộ KPI {kpi_name}: {', '.join(s['passing'])}"})
     if dashboard_url:
-        elements.append({"tag": "action", "actions": [{
-            "tag": "button", "type": "primary",
-            "text": {"tag": "plain_text", "content": "📊 Mở Dashboard"},
-            "url": f"{dashboard_url.rstrip('/')}/?date={run}&kpi={kpi_type}",
-        }]})
-    author = "Phân tích bởi AI Analyst (Claude), số liệu đã đối chiếu tự động" if ai else "Phân tích tự động theo quy tắc"
-    elements.append({"tag": "note", "elements": [{"tag": "plain_text", "content":
-        f"Hết bản tin. Hẹn gặp lại anh chị em vào bản tin tuần sau! · {author} · Nguồn: {SOURCE_TABLE} · "
-        f"Đơn theo ngày tạo — {windows}"}]})
+        elements.append({"tag": "button", "type": "primary", "text": {"tag": "plain_text", "content": "📊 Mở Dashboard"},
+                         "behaviors": [{"type": "open_url", "default_url": f"{dashboard_url.rstrip('/')}/?date={run}&kpi={kpi_type}"}]})
+    author = "Phân tích bởi AI Analyst (Claude), số liệu đối chiếu tự động" if ai else "Phân tích tự động theo quy tắc"
+    elements.append({"tag": "markdown", "text_size": "notation", "content":
+                     f"<font color='grey'>Hết bản tin. Hẹn gặp lại anh chị em vào bản tin tuần sau! · {author} · "
+                     f"Nguồn: {SOURCE_TABLE}, đơn duy nhất từ data sạch theo ngày tạo đơn.</font>"})
 
     card = {
-        "config": {"wide_screen_mode": True},
+        "schema": "2.0",
+        "config": {"width_mode": "fill", "update_multi": True},
         "header": {
             "template": "red" if s["alerts"] else "green",
-            "title": {"tag": "plain_text", "content":
-                      f"📢 Nhịp đập kinh doanh · {'Cảnh báo' if s['alerts'] else 'Đạt'} KPI {kpi_name} · "
-                      f"{fmt_date(run)}/{run[:4]}"},
+            "title": {"tag": "plain_text", "content": f"📢 Nhịp đập kinh doanh tuần {week}"},
+            "subtitle": {"tag": "plain_text", "content":
+                         "Tin nóng và tin mới về Tỷ lệ chốt, Tỷ lệ giao, Tỷ lệ giao thành công từ data sạch của từng thị trường."},
         },
-        "elements": elements,
+        "body": {"elements": elements},
     }
     return {"has_alert": bool(s["alerts"]), **s, "card": card}
 
@@ -120,20 +159,19 @@ def draft_card(card: dict, targets: list, draft_id: str, dashboard_url: str = ""
                f"🟡 **BẢN NHÁP CHỜ DUYỆT** — sẽ gửi tới: {', '.join(targets) or '(chưa có nhóm)'}\n"
                f"Mã nháp: `{draft_id}`. Duyệt hoặc yêu cầu viết lại tại Dashboard → tab **Bản tin**."}]
     if dashboard_url:
-        banner.append({"tag": "action", "actions": [{
-            "tag": "button", "type": "default", "text": {"tag": "plain_text", "content": "✅ Mở để duyệt"},
-            "url": f"{dashboard_url.rstrip('/')}/?tab=bantin&draft={draft_id}"}]})
+        banner.append({"tag": "button", "type": "default", "text": {"tag": "plain_text", "content": "✅ Mở để duyệt"},
+                       "behaviors": [{"type": "open_url", "default_url": f"{dashboard_url.rstrip('/')}/?tab=bantin&draft={draft_id}"}]})
     banner.append({"tag": "hr"})
     header = {**card["header"], "template": "yellow",
               "title": {"tag": "plain_text", "content": "[NHÁP] " + card["header"]["title"]["content"]}}
-    return {**card, "header": header, "elements": banner + card["elements"]}
+    return {**card, "header": header, "body": {**card["body"], "elements": banner + card["body"]["elements"]}}
 
 
 def test_card(name: str, kpi_types: list) -> dict:
     what = " và ".join(f"cảnh báo KPI {KPI_TYPE_LABEL[t]}" for t in kpi_types) or "bản tin (chưa chọn loại nào)"
     return {
-        "config": {"wide_screen_mode": True},
+        "schema": "2.0",
         "header": {"template": "blue", "title": {"tag": "plain_text", "content": "📢 Nhịp đập kinh doanh · Kiểm tra kết nối"}},
-        "elements": [{"tag": "markdown", "content":
-                      f"Alo alo! Nhóm **{name}** đã được đăng ký nhận {what} của bản tin *Nhịp đập kinh doanh*."}],
+        "body": {"elements": [{"tag": "markdown", "content":
+                               f"Alo alo! Nhóm **{name}** đã được đăng ký nhận {what} của bản tin *Nhịp đập kinh doanh*."}]},
     }
