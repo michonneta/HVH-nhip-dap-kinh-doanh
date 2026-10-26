@@ -85,12 +85,13 @@ Nhóm đổi tên trong Lark thì tên trên dashboard và bản tin tự cập 
 ## Dashboard "Báo cáo chất lượng chuyển đổi"
 - **Logo**: đặt file logo gốc (PNG/SVG nền trong suốt) tại `docs/assets/logo.png`; chưa có file thì hiển thị chữ "HV HOLDINGS".
   Màu theo bảng màu thương hiệu (#26a557, #71bf44, #06a7e1, #58585a); đỏ / cam chỉ dùng cho không đạt / gần đạt / xấu đi.
-- **Tab Tổng quan**: bộ lọc Loại báo cáo (Tuần / Tháng / Quý), Từ – Đến, Thị trường, BU, Kênh bán, Team, Seller, SubBrand,
-  SKU / Sản phẩm (tìm theo mã hoặc tên), Province →
+- **Tab Tổng quan**: bộ lọc Loại báo cáo (Tuần / Tháng / Quý), Từ – Đến, Thị trường, BU, Kênh bán, Nhóm, Nhân viên, SubBrand,
+  SKU / Sản phẩm (tìm theo mã hoặc tên), Tỉnh →
   1. 3 thẻ KPI (tỷ lệ chốt, tỷ lệ giao, tỷ lệ giao thành công từ data sạch) của kỳ cuối, so với kỳ trước và KPI;
   2. Bảng tổng hợp theo thị trường × kỳ, dòng phụ so với KPI sinh tồn / KPI tháng (xanh đạt, cam thiếu < `near_pp` điểm %,
      đỏ không đạt), cột xu hướng (sparkline) và cảnh báo;
-  3. Bảng chi tiết theo tab Thị trường / BU / Kênh bán / Team / Seller / SubBrand / SKU / Province với đủ 16 chỉ số;
+  3. Bảng chi tiết theo tab Thị trường / BU / Kênh bán / Nhóm / Nhân viên / SubBrand / SKU / Tỉnh với đủ 16 chỉ số
+     (cột đầu cố định khi cuộn ngang);
   4. Top lý do hủy đơn và top lý do hoàn (số đơn, tỷ trọng).
 - **Dữ liệu**: mỗi lần build, `pipeline/cube.py` gom đơn data sạch theo ngày tạo × chiều lọc × trạng thái × lý do
   (~400 ngày gần nhất), nén + mã hóa thành `docs/data/cube.json`; trình duyệt tự lọc và tính (vài chục ms).
