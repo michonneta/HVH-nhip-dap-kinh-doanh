@@ -20,11 +20,15 @@ BigQuery ──API──▶ dữ liệu Dashboard (docs/data, mã hóa) ──�
 |---|---|
 | `config/config.json` | KPI, thời gian TB chốt/giao, nhóm nhận bản tin (`recipients`), lịch gửi — sửa trên dashboard |
 | `tools/test-lark.ps1` | Thử gửi tin bằng Bot ngay trên máy Windows (không cần GitHub) |
-| `pipeline/metrics.py` | SQL BigQuery + tính 8 chỉ số |
-| `pipeline/analysis.py` | Phân tích 4 cấp độ |
-| `pipeline/ai_writer.py` | AI Analyst: đọc dữ liệu Dashboard, viết bản tin (Claude API), kiểm tra số liệu |
-| `pipeline/bulletin.py` | Khung bản tin Lark (Kim tự tháp Minto, giọng "loa phường"); mẫu dự phòng khi AI lỗi |
-| `pipeline/lark.py` | Lark app bot: tenant token, gửi card theo chat_id, liệt kê nhóm |
+| `pipeline/metrics.py` | SQL BigQuery + tính 8 chỉ số (kỳ này và kỳ trước) |
+| `pipeline/report.py` | Mô hình số liệu Bản tin: trạng thái chốt/giao so với KPI, nguyên nhân, doanh thu hụt, dữ liệu biểu đồ |
+| `pipeline/reasons.py` | Gộp lý do hủy/hoàn cùng nghĩa khác ngôn ngữ (Việt, Anh, Thái, Indonesia) |
+| `pipeline/report_writer.py` | Lời văn Bản tin: AI Analyst viết theo skill bao-cao-dinh-ky-consultant; mẫu theo quy tắc khi AI lỗi |
+| `pipeline/report_html.py` · `templates/report.html` | Dựng Bản tin HTML từ khuôn mẫu đã duyệt (logo, màu thương hiệu, biểu đồ) |
+| `pipeline/report_image.py` | Chụp Bản tin HTML thành ảnh JPEG (Playwright, chỉ cài khi gửi) |
+| `pipeline/ai_writer.py` | Gọi Claude (gói Pro/Max hoặc API), kiểm tra số liệu và cách gọi tên |
+| `pipeline/bulletin.py` | Card Lark tóm tắt Bản tin (tiêu đề, đoạn mở, khối quyết định, 4 thẻ KPI, Đọc nhanh, kết luận) |
+| `pipeline/lark.py` | Lark app bot: tenant token, gửi card và ảnh theo chat_id, liệt kê nhóm |
 | `pipeline/run.py` | `tick` / `build` / `send` / `test` / `chats` / `approve` / `redraft` / `reject` |
 | `.github/workflows/nhip-dap.yml` | Lịch chạy + chạy tay |
 | `docs/` | Trang GitHub Pages; `docs/data/` do workflow sinh ra |
@@ -52,7 +56,8 @@ tạo khóa JSON → lưu nguyên nội dung vào secret `GCP_SA_KEY`.
 
 ### 3. Lark app "AI Analyst HVH" (open.larksuite.com/app)
 1. **Add Features → Bot**: bật Bot.
-2. **Permissions & Scopes**: thêm `im:message:send_as_bot` (gửi tin) và `im:chat:readonly` (liệt kê nhóm để lấy chat_id).
+2. **Permissions & Scopes**: thêm `im:message:send_as_bot` (gửi tin), `im:chat:readonly` (liệt kê nhóm để lấy chat_id)
+   và `im:resource` (tải ảnh Bản tin đầy đủ lên Lark).
 3. **Version Management & Release**: tạo phiên bản mới và phát hành để quyền có hiệu lực.
 4. Trong từng nhóm chat Lark (VD "Sinh tồn", "KPI tháng"): **Settings → Bots → Add bot → AI Analyst HVH**.
 
@@ -124,15 +129,23 @@ Nhóm đổi tên trong Lark thì tên trên dashboard và bản tin tự cập 
 - **Kết nối AI**: với gói Claude Pro/Max, workflow chạy Claude Code CLI không tương tác (`claude -p --json-schema …`)
   bằng `CLAUDE_CODE_OAUTH_TOKEN`; lượt dùng tính vào hạn mức của gói (mỗi bản tin ~1 phút). Có `ANTHROPIC_API_KEY` thì gọi
   Claude API trực tiếp.
-- **AI Analyst** (Claude, model `claude-opus-5-5`) đọc đúng bộ dữ liệu Dashboard của kỳ báo cáo: chỉ số, KPI,
-  so với tuần trước và các phát hiện code đã tính sẵn (phân khúc gây thiếu hụt, lý do hủy/hoàn). AI viết kết luận,
-  4 cấp độ cho từng chỉ số không đạt và đề xuất hành động. AI không tự tính số.
-- **Kiểm tra số liệu**: mọi con số trong bài phải có trong dữ liệu; sai thì AI viết lại 1 lần, vẫn sai hoặc AI lỗi
-  thì bản tin dùng mẫu theo quy tắc (không bao giờ lỡ lịch). Bản tin ghi rõ "AI Analyst" hay "mẫu quy tắc".
+- **Nội dung** theo mẫu đã duyệt (skill `bao-cao-dinh-ky-consultant`, hồ sơ "Nhịp đập kinh doanh"), trả lời 4 câu hỏi:
+  tỷ lệ chốt / tỷ lệ giao có đạt KPI không, có tốt hơn tuần trước không, chưa đạt vì sao, hụt bao nhiêu doanh thu.
+  Bố cục: tiêu đề gọi tên chỉ số + thị trường chưa đạt, câu hỏi kỳ này, đoạn mở, khối quyết định, 4 thẻ KPI (tỷ lệ chung),
+  Đọc nhanh, Bức tranh tổng, 3 luận điểm (Tỷ lệ chốt, Tỷ lệ giao, Ảnh hưởng doanh thu) mỗi phần có bảng + biểu đồ,
+  kế hoạch hành động, rủi ro, kết luận "=>", phụ lục giả thuyết, giải thích thuật ngữ.
+- **Ai làm gì**: code (`report.py`) tính mọi con số, bảng và biểu đồ; AI Analyst (Claude, model `claude-opus-5-5`) chỉ viết
+  lời. Mọi con số AI viết phải có trong dữ liệu và không được viết kiểu "x/y chỉ số"; sai thì AI viết lại 1 lần, vẫn sai
+  số hoặc AI lỗi thì dùng mẫu theo quy tắc (không bao giờ lỡ lịch). Bản tin ghi rõ "AI Analyst" hay "mẫu quy tắc".
+- **Gửi vào Lark**: một card tóm tắt (lớp đọc 30 giây) và ngay sau đó là **ảnh toàn bộ bản tin** (chụp bằng Chromium
+  không giao diện). Ảnh tải lên Lark một lần lúc tạo bản nháp, duyệt gửi dùng lại ảnh đó. Thiếu quyền `im:resource` thì
+  vẫn gửi card và báo lỗi ảnh ở tab Bản tin.
+- **Đơn quá hạn tuần trước**: mỗi tuần lưu số đơn cửa sổ giao vào `state/giao_snapshots.json`; tuần sau bản tin cho biết
+  nhóm đơn quá hạn đó đã thành hoàn, giao được hay vẫn đang giao.
 - **Duyệt** (bật mặc định, tab Cấu hình → *AI Analyst & duyệt bản tin*): đến lịch, bản tin thành **bản nháp**, gửi vào
-  **nhóm duyệt** (tùy chọn) với nhãn [NHÁP]. Vào Dashboard → tab **Bản tin**: **Duyệt gửi** / **Viết lại** / **Hủy**.
-  Tắt duyệt thì bản tin gửi thẳng tới các nhóm theo lịch.
-- Bản nháp lưu mã hóa trong `docs/data/drafts.json`.
+  **nhóm duyệt** (tùy chọn) với nhãn [NHÁP] kèm ảnh. Vào Dashboard → tab **Bản tin** xem bản tin đầy đủ hoặc card Lark,
+  bấm **Duyệt gửi** / **Viết lại** / **Hủy**. Tắt duyệt thì bản tin gửi thẳng tới các nhóm theo lịch.
+- Bản nháp lưu mã hóa trong `docs/data/drafts.json` (bản tin HTML giữ cho 12 bản nháp gần nhất).
 
 ## Vận hành
 - **Lịch gửi**: workflow chạy mỗi 30 phút; lịch đến hạn (theo `timezone` trong cấu hình) gửi tới mọi nhóm đã tick ở lượt

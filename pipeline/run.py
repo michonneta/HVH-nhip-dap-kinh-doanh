@@ -17,7 +17,7 @@ from zoneinfo import ZoneInfo
 
 from . import config as config_mod
 from . import metrics
-from .bulletin import build_bulletin, draft_card, test_card
+from .bulletin import build_card, draft_card, test_card
 from .config import ROOT
 
 log = logging.getLogger("nhip-dap")
@@ -26,6 +26,8 @@ STATE_DIR = ROOT / "state"
 SEND_LOG = STATE_DIR / "send_log.json"
 BUILD_STATE = STATE_DIR / "build.json"
 CHATS_STATE = STATE_DIR / "lark_chats.sha256"   # chỉ lưu dấu vân tay, tên nhóm nằm trong file đã mã hóa
+SNAPSHOTS = STATE_DIR / "giao_snapshots.json"   # số đơn cửa sổ giao lúc gửi bản tin, để tuần sau xem đơn quá hạn đi về đâu
+DRAFTS_WITH_HTML = 12                           # chỉ giữ bản tin HTML cho các bản nháp gần nhất (file dữ liệu gọn)
 CATCHUP_HOURS = 6         # lịch bị trễ (GitHub cron chậm) vẫn gửi bù trong khoảng này
 BUILD_EVERY_HOURS = float(os.getenv("BUILD_EVERY_HOURS", "20"))
 DOW_NAMES = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
@@ -114,6 +116,7 @@ def build(cfg, sealer=None) -> dict:
     latest = metrics.last_sunday(today)
     sealer.write("cube.json", build_cube(today), gz=True)
     reports = {latest: metrics.build_report(latest, cfg)}
+    record_snapshot(cfg, reports[latest])
     built_at = _now(cfg).isoformat(timespec="seconds")
     sealer.write("index.json", {
         "generated_at": built_at, "latest": str(latest), "today": str(today),
@@ -131,49 +134,60 @@ def write_history(sealer):
     sealer.write("history.json", _read_json(SEND_LOG, [])[-200:][::-1])
 
 
+def record_snapshot(cfg, report):
+    """Lưu số đơn cửa sổ giao của kỳ T lần đầu thấy (lúc gửi bản tin), giữ 8 kỳ gần nhất."""
+    from .report import snapshot_of
+    snaps = _read_json(SNAPSHOTS, {})
+    if report["run_date"] in snaps:
+        return
+    snaps[report["run_date"]] = snapshot_of(report, _now(cfg).isoformat(timespec="seconds"))
+    _write_json(SNAPSHOTS, dict(sorted(snaps.items())[-8:]))
+
+
 # ---------------------------------------------------------------- soạn bản tin (AI Analyst)
 def _ai_enabled(cfg) -> bool:
     from .ai_writer import backend
     return cfg["ai"]["enabled"] and bool(backend())
 
 
-DOW_VI = {"mon": "thứ Hai", "tue": "thứ Ba", "wed": "thứ Tư", "thu": "thứ Năm", "fri": "thứ Sáu",
-          "sat": "thứ Bảy", "sun": "Chủ nhật", "mon-fri": "ngày làm việc", "*": "ngày"}
-
-
-def next_note(cfg) -> str:
-    """Câu "bản tin tiếp theo sẽ phát vào ..." theo lịch gửi đầu tiên đang bật, vd "sáng Chủ nhật tuần sau"."""
-    s = next((x for x in cfg["schedules"] if x.get("enabled", True)), None)
-    if not s:
-        return ""
-    buoi = "sáng" if s["hour"] < 12 else "chiều" if s["hour"] < 18 else "tối"
-    when = {"mon-fri": f"{buoi} ngày làm việc tiếp theo", "*": f"{buoi} mai"}.get(s["day_of_week"])
-    return when or f"{buoi} {DOW_VI[s['day_of_week']]} tuần sau"
-
-
 def compose(cfg, report, kpi_type, markets, dash_url, cache) -> dict:
-    """Bản tin cho một phạm vi (loại KPI + thị trường). AI viết thân bài; lỗi thì dùng mẫu theo quy tắc."""
+    """Bản tin cho một phạm vi (loại KPI + thị trường): mô hình số liệu → lời văn (AI, lỗi thì mẫu) → HTML + card Lark."""
+    from . import report as report_mod, report_html, report_writer
     key = (report["run_date"], kpi_type, tuple(sorted(markets)))
     if key in cache:
         return cache[key]
-    scope = {"kpi_type": kpi_type, "markets": markets}
-    opts = {"near_pp": cfg["near_pp"], "next_note": next_note(cfg)}
-    b = build_bulletin(report, scope, dash_url, **opts)
-    b["author"], b["ai_error"] = "mẫu", None
-    if b["has_alert"] or cfg["send_when_ok"]:
+    prev_snap = _read_json(SNAPSHOTS, {}).get(str(date.fromisoformat(report["run_date"]) - timedelta(days=7)))
+    model = report_mod.build_model(report, kpi_type, markets, cfg["near_pp"], prev_snap)
+    narr, author, err = report_writer.template(model), "mẫu", None
+    if model["failing"] or cfg["send_when_ok"]:
         if _ai_enabled(cfg):
             try:
-                from . import ai_writer
-                ai = ai_writer.write(report, kpi_type, b, cfg["near_pp"])
-                b = {**build_bulletin(report, scope, dash_url, ai=ai, **opts), "author": "AI", "ai_error": None}
+                narr, author = report_writer.write(model), "AI"
             except Exception as e:  # không để lỡ lịch vì AI: quay về mẫu, ghi lại lý do
                 log.exception("AI Analyst lỗi, dùng bản tin theo mẫu")
-                b["ai_error"] = str(e)[:300]
-        else:
-            b["ai_error"] = ("Chưa kết nối AI (thiếu secret CLAUDE_CODE_OAUTH_TOKEN hoặc ANTHROPIC_API_KEY)"
-                             if cfg["ai"]["enabled"] else None)
+                err = str(e)[:300]
+        elif cfg["ai"]["enabled"]:
+            err = "Chưa kết nối AI (thiếu secret CLAUDE_CODE_OAUTH_TOKEN hoặc ANTHROPIC_API_KEY)"
+    b = {"has_alert": bool(model["failing"]), "failing": sorted({c["market"] for c in model["failing"]}),
+         "alerts": len(model["failing"]), "author": author, "ai_error": err,
+         "html": report_html.render(model, narr, author), "card": build_card(model, narr, dash_url, author),
+         "image_key": None, "image_error": None}
     cache[key] = b
     return b
+
+
+def _ensure_image(b, bot_box):
+    """Chụp bản tin HTML thành ảnh và tải lên Lark một lần (image_key dùng lại khi duyệt gửi). Lỗi thì vẫn gửi card."""
+    if b.get("image_key") or b.get("image_error"):
+        return b.get("image_key")
+    try:
+        from .report_image import render_jpeg
+        bot_box[0] = bot_box[0] or _bot()
+        b["image_key"] = bot_box[0].upload_image(render_jpeg(b["html"]))
+    except Exception as e:
+        log.exception("Không tạo / tải được ảnh bản tin (kiểm tra quyền im:resource của Bot)")
+        b["image_error"] = str(e)[:300]
+    return b.get("image_key")
 
 
 # ---------------------------------------------------------------- bản nháp chờ duyệt
@@ -189,7 +203,10 @@ def load_drafts() -> list:
 
 
 def save_drafts(drafts: list, sealer):
-    sealer.write("drafts.json", drafts[-60:])
+    drafts = drafts[-60:]
+    for d in drafts[:-DRAFTS_WITH_HTML]:
+        d.pop("html", None)
+    sealer.write("drafts.json", drafts)
 
 
 def _log(entries):
@@ -202,9 +219,13 @@ def _entry(cfg, g, run_date, trigger, schedule_id=None, occurrence=None):
             "group_id": g["id"], "group": g["name"], "kpi_type": g["kpi_type"]}
 
 
-def _post(bot_box, chat_id, card):
+def _post(bot_box, chat_id, card, image_key=None):
+    """Gửi card, rồi ảnh bản tin đầy đủ (nếu có) ngay sau đó. Trả về message_id của card."""
     bot_box[0] = bot_box[0] or _bot()
-    return bot_box[0].send_card(chat_id, card)
+    message_id = bot_box[0].send_card(chat_id, card)
+    if image_key:
+        bot_box[0].send_image(chat_id, image_key)
+    return message_id
 
 
 def send(cfg, run_date: date, group_ids: list, trigger: str, schedule_id=None, occurrence=None, report=None,
@@ -214,6 +235,7 @@ def send(cfg, run_date: date, group_ids: list, trigger: str, schedule_id=None, o
     live: {chat_id: tên} các nhóm Bot đang ở (None = không biết, cứ gửi).
     """
     report = report or metrics.build_report(run_date, cfg)
+    record_snapshot(cfg, report)
     dash_url = _dashboard_url(cfg)
     review = cfg["review"]["enabled"]
     bot, cache, entries, pending = [None], {}, [], {}
@@ -226,15 +248,17 @@ def send(cfg, run_date: date, group_ids: list, trigger: str, schedule_id=None, o
                 entry["status"] = "bỏ qua (Bot không còn trong nhóm)"  # không thử lại mỗi 30 phút
             else:
                 b = compose(cfg, report, g["kpi_type"], g["markets"], dash_url, cache)
-                entry.update(failing=b["failing"], alerts=len(b["alerts"]), author=b["author"])
+                entry.update(failing=b["failing"], alerts=b["alerts"], author=b["author"])
                 if not b["has_alert"] and not g.get("send_when_ok"):
                     entry["status"] = "bỏ qua (đạt KPI)"
                 elif review:
                     pending.setdefault((g["kpi_type"], tuple(sorted(g["markets"]))), []).append((g, entry))
                     entry["status"] = "chờ duyệt"
                 else:
-                    entry["message_id"] = _post(bot, g["chat_id"], b["card"])
+                    entry["message_id"] = _post(bot, g["chat_id"], b["card"], _ensure_image(b, bot))
                     entry["status"] = "đã gửi"
+                    if b.get("image_error"):
+                        entry["image_error"] = b["image_error"]
         except Exception as e:  # lỗi một nhóm không chặn các nhóm khác
             log.exception("Gửi nhóm %s lỗi", g["name"])
             entry["status"] = "lỗi"
@@ -245,12 +269,14 @@ def send(cfg, run_date: date, group_ids: list, trigger: str, schedule_id=None, o
         drafts = load_drafts()
         for (kpi_type, markets), members in pending.items():
             b = compose(cfg, report, kpi_type, list(markets), dash_url, cache)
+            _ensure_image(b, bot)
             draft_id = f"{run_date:%Y%m%d}-{kpi_type}-{_now(cfg):%H%M%S}" + (f"-{'-'.join(markets)}" if markets else "")
             draft = {"id": draft_id, "run_date": str(run_date), "kpi_type": kpi_type, "markets": list(markets),
                      "created_at": _now(cfg).isoformat(timespec="seconds"), "trigger": trigger,
                      "author": b["author"], "ai_error": b["ai_error"], "failing": b["failing"],
                      "group_ids": [g["id"] for g, _ in members], "targets": [g["name"] for g, _ in members],
-                     "status": "chờ duyệt", "card": b["card"]}
+                     "status": "chờ duyệt", "card": b["card"], "html": b["html"],
+                     "image_key": b["image_key"], "image_error": b["image_error"]}
             drafts.append(draft)
             for _, entry in members:
                 entry["draft_id"] = draft_id
@@ -269,7 +295,8 @@ def _notify_reviewer(cfg, draft, bot, dash_url):
         log.info("Bản nháp %s chờ duyệt trên Dashboard (chưa chọn nhóm duyệt)", draft["id"])
         return
     try:
-        draft["review_message_id"] = _post(bot, chat_id, draft_card(draft["card"], draft["targets"], draft["id"], dash_url))
+        draft["review_message_id"] = _post(bot, chat_id, draft_card(draft["card"], draft["targets"], draft["id"], dash_url),
+                                           draft.get("image_key"))
     except Exception as e:
         log.exception("Không gửi được bản nháp vào nhóm duyệt")
         draft["review_error"] = str(e)[:300]
@@ -299,7 +326,7 @@ def approve(cfg, draft_id, sealer, by="") -> list:
             if live is not None and g["chat_id"] not in live:
                 entry["status"] = "bỏ qua (Bot không còn trong nhóm)"
             else:
-                entry["message_id"] = _post(bot, g["chat_id"], d["card"])
+                entry["message_id"] = _post(bot, g["chat_id"], d["card"], d.get("image_key"))
                 entry["status"] = "đã gửi"
         except Exception as e:
             log.exception("Gửi nhóm %s lỗi", g["name"])
@@ -321,9 +348,12 @@ def redraft(cfg, draft_id, sealer, by=""):
     report = metrics.build_report(date.fromisoformat(d["run_date"]), cfg)
     dash_url = _dashboard_url(cfg)
     b = compose(cfg, report, d["kpi_type"], d["markets"], dash_url, {})
-    d.update(card=b["card"], author=b["author"], ai_error=b["ai_error"], failing=b["failing"],
+    bot = [None]
+    _ensure_image(b, bot)
+    d.update(card=b["card"], html=b["html"], image_key=b["image_key"], image_error=b["image_error"],
+             author=b["author"], ai_error=b["ai_error"], failing=b["failing"],
              status="chờ duyệt", rewritten_at=_now(cfg).isoformat(timespec="seconds"), rewritten_by=by or None)
-    _notify_reviewer(cfg, d, [None], dash_url)
+    _notify_reviewer(cfg, d, bot, dash_url)
     save_drafts(drafts, sealer)
 
 

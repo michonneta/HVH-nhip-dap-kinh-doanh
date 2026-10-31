@@ -1,7 +1,7 @@
 """Gửi tin vào nhóm Lark bằng Bot của Lark app (App ID / App Secret).
 
-Cần: tính năng Bot đã bật, bot đã được thêm vào nhóm, quyền `im:message:send_as_bot` (gửi tin)
-và `im:chat:readonly` (liệt kê nhóm bot đang tham gia để lấy chat_id).
+Cần: tính năng Bot đã bật, bot đã được thêm vào nhóm, quyền `im:message:send_as_bot` (gửi tin),
+`im:chat:readonly` (liệt kê nhóm bot đang tham gia để lấy chat_id) và `im:resource` (tải ảnh bản tin lên).
 """
 import json
 import os
@@ -52,6 +52,18 @@ class LarkBot:
         data = self._check(self._http.post(
             "/open-apis/im/v1/messages", params={"receive_id_type": "chat_id"}, headers=self._headers(),
             json={"receive_id": chat_id, "msg_type": "interactive", "content": json.dumps(card, ensure_ascii=False)}))
+        return data["data"]["message_id"]
+
+    def upload_image(self, data: bytes, filename: str = "ban-tin.jpg") -> str:
+        """Tải ảnh lên Lark, trả về image_key (dùng lại được cho nhiều tin nhắn)."""
+        resp = self._http.post("/open-apis/im/v1/images", headers=self._headers(), timeout=60,
+                               data={"image_type": "message"}, files={"image": (filename, data, "image/jpeg")})
+        return self._check(resp)["data"]["image_key"]
+
+    def send_image(self, chat_id: str, image_key: str) -> str:
+        data = self._check(self._http.post(
+            "/open-apis/im/v1/messages", params={"receive_id_type": "chat_id"}, headers=self._headers(),
+            json={"receive_id": chat_id, "msg_type": "image", "content": json.dumps({"image_key": image_key})}))
         return data["data"]["message_id"]
 
     def list_chats(self) -> list:

@@ -184,6 +184,9 @@ def build_report(run_date: date, cfg: dict, with_analysis: bool = True, summary:
         counts = {
             k: summary.get((run_date, code, k, "cur")) or {c: 0 for c in COUNT_COLS} for k in ("chot", "giao")
         }
+        counts_prev = {
+            k: summary.get((run_date, code, k, "prev")) or {c: 0 for c in COUNT_COLS} for k in ("chot", "giao")
+        }
         status = {}
         for kpi_type in ("survival", "monthly"):
             status[kpi_type] = {}
@@ -201,6 +204,7 @@ def build_report(run_date: date, cfg: dict, with_analysis: bool = True, summary:
                 "giao": [str(giao_to - timedelta(days=wd - 1)), str(giao_to)],
             },
             "counts": {k: {c: counts[k].get(c) or 0 for c in COUNT_COLS} for k in counts},
+            "counts_prev": {k: {c: counts_prev[k].get(c) or 0 for c in COUNT_COLS} for k in counts_prev},
             "metrics": mm,
             "status": status,
             "breakdown": _breakdown_for(breakdown, code) if with_analysis else {},

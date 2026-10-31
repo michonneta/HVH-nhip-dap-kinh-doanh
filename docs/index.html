@@ -1178,8 +1178,14 @@ function cardBodyHtml(card) {
 function renderEls(els) {
   return els.map(el => {
     if (el.tag === 'hr') return '<hr>';
-    if (el.tag === 'column_set') return '<div style="display:flex;gap:8px;align-items:flex-start;margin:4px 0">' + el.columns.map(c =>
-      `<div style="${c.width === 'weighted' ? 'flex:1;min-width:0' : 'flex:none;width:' + c.width}">${renderEls(c.elements)}</div>`).join('') + '</div>';
+    if (el.tag === 'column_set') {  // flex_mode "bisect": 2 cột mỗi hàng như trên Lark; cột có nền xám thành ô
+      const bisect = el.flex_mode === 'bisect';
+      return `<div style="display:flex;gap:8px;align-items:stretch;margin:6px 0;${bisect ? 'flex-wrap:wrap' : ''}">` + el.columns.map(c => {
+        const w = bisect ? 'flex:0 0 calc(50% - 4px);min-width:0' : c.width === 'weighted' ? 'flex:1;min-width:0' : 'flex:none;width:' + c.width;
+        const bg = c.background_style === 'grey' ? ';background:#f2f3f5;border-radius:8px;padding:4px 12px' : '';
+        return `<div style="${w}${bg}">${renderEls(c.elements)}</div>`;
+      }).join('') + '</div>';
+    }
     if (el.tag === 'markdown') return `<div class="${el.text_size === 'notation' ? 'note' : ''}" style="margin:8px 0">${larkMd(el.content)}</div>`;
     if (el.tag === 'note') return '<p class="note">' + esc(el.elements.map(x => x.content).join(' ')) + '</p>';
     if (el.tag === 'button') return `<p><a class="btn primary" href="${esc(el.behaviors[0].default_url)}" target="_blank" rel="noopener">${esc(el.text.content)}</a></p>`;
@@ -1231,11 +1237,21 @@ function renderDrafts() {
       <button class="btn primary" data-dact="approve">✅ Duyệt gửi tới ${d.targets.length} nhóm</button>
       <button class="btn" data-dact="redraft">✍️ Viết lại</button>
       <button class="btn danger" data-dact="reject">Hủy bản tin</button></div>` : ''}
-    <div class="lark-head ${esc(d.card.header.template || 'blue')}">${esc(d.card.header.title.content)}</div>
-    <div class="lark-body" style="border:1px solid var(--border);border-top:0;border-radius:0 0 12px 12px;max-height:none">${cardBodyHtml(d.card)}</div>`;
+    ${d.image_error ? `<p class="muted" style="font-size:12px;color:var(--critical)">⚠ Chưa gửi được ảnh bản tin vào Lark (${esc(d.image_error)}) — kiểm tra quyền im:resource của Bot.</p>` : ''}
+    ${d.html ? `<div class="seg" style="margin-bottom:10px"><button data-dview="html" class="${state.draftView !== 'card' ? 'on' : ''}">Bản tin đầy đủ</button><button data-dview="card" class="${state.draftView === 'card' ? 'on' : ''}">Card Lark</button></div>` : ''}
+    ${d.html && state.draftView !== 'card'
+      ? '<iframe id="reportFrame" title="Bản tin đầy đủ" style="width:100%;border:1px solid var(--border);border-radius:12px;min-height:600px;background:#f3f5f4"></iframe>'
+      : `<div class="lark-head ${esc(d.card.header.template || 'blue')}">${esc(d.card.header.title.content)}</div>
+    <div class="lark-body" style="border:1px solid var(--border);border-top:0;border-radius:0 0 12px 12px;max-height:none">${cardBodyHtml(d.card)}</div>`}`;
+  const fr = $('#reportFrame');
+  if (fr) {  // bản tin HTML tự chứa (CSS, biểu đồ); khung cao theo nội dung
+    fr.onload = () => { try { fr.style.height = fr.contentDocument.documentElement.scrollHeight + 'px'; } catch {} };
+    fr.srcdoc = d.html;
+  }
 }
 $('#draftList').onclick = e => { const b = e.target.closest('[data-draft]'); if (b) { state.selDraft = b.dataset.draft; renderDrafts(); } };
 $('#draftView').onclick = e => {
+  if (e.target.dataset.dview) { state.draftView = e.target.dataset.dview; renderDrafts(); return; }
   const act = e.target.dataset.dact; if (!act || !isAdmin()) return;
   const d = (state.drafts || []).find(x => x.id === state.selDraft); if (!d) return;
   const ask = { approve: `Gửi bản tin này tới: ${d.targets.join(', ')}?`, redraft: 'Yêu cầu AI viết lại bản tin này với dữ liệu mới nhất?', reject: 'Hủy bản tin này (không gửi)?' }[act];
