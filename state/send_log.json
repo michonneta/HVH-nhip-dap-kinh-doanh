@@ -361,22 +361,22 @@
   "status": "đã gửi"
  },
  {
-  "at": "2026-11-01T23:09:41+07:00",
+  "at": "2026-11-01T23:10:23+07:00",
   "trigger": "duyệt bản nháp",
   "run_date": "2026-11-01",
   "schedule_id": null,
   "occurrence": null,
-  "group_id": "oc_513fd0e6953e2440e4cdee34ff3a6829:survival",
-  "group": "[HVH] Cập nhật bản tin Sinh tồn",
-  "kpi_type": "survival",
-  "draft_id": "20261101-survival-125002",
+  "group_id": "oc_3d4fb5f646a7a9d85b4f3e37813c6eab:monthly",
+  "group": "[HVH] Cập nhật bản tin KPIs chất lượng data",
+  "kpi_type": "monthly",
+  "draft_id": "20261101-monthly-125009",
   "failing": [
    "ML",
    "TH",
    "VN"
   ],
   "author": "mẫu",
-  "message_id": "om_x100b61420aa984a0ffc342463a87f62",
+  "message_id": "om_x100b614209c920a0ffdb4658d7c2a9e",
   "status": "đã gửi"
  }
 ]
