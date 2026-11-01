@@ -340,5 +340,24 @@
   "author": "mẫu",
   "status": "chờ duyệt",
   "draft_id": "20261101-survival-125016-CAM-ID-ML-PH-TH-VN"
+ },
+ {
+  "at": "2026-11-01T23:07:32+07:00",
+  "trigger": "duyệt bản nháp",
+  "run_date": "2026-11-01",
+  "schedule_id": null,
+  "occurrence": null,
+  "group_id": "oc_85ff565a79dce2b07ffed48087b450b3:survival",
+  "group": "[SA] Duyệt bản tin",
+  "kpi_type": "survival",
+  "draft_id": "20261101-survival-125016-CAM-ID-ML-PH-TH-VN",
+  "failing": [
+   "ML",
+   "TH",
+   "VN"
+  ],
+  "author": "mẫu",
+  "message_id": "om_x100b61427287e0a0fe2f38b8a1d6408",
+  "status": "đã gửi"
  }
 ]
